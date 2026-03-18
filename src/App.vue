@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { onBeforeMount, ref } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { Window } from '@tauri-apps/api/window';
+import { Store } from "@tauri-apps/plugin-store";
 import { MdToHtml } from 'streaming-md-to-html';
 // import MdToHtmlEnhancer from './utils/MdToHtmlEnhancer';
 // import msgslot from './components/msgslot.vue';
@@ -16,37 +18,21 @@ const currentCharacter = ref<string | null>(null);
 const currentContent = ref<string>('');
 const isSending = ref<boolean>(false);
 const isTokenVisible = ref<boolean>(false);
-const bearerToken = ref<string>(import.meta.env.VITE_API_KEY || '');
+const bearerToken = ref<string>('');
 const tokenDisplayForm = ref<string>('password');
 let converter = new MdToHtml();
 
-function textareaEnter(event: KeyboardEvent) {
-    if(event.key === 'Enter' && !isSending.value)
-        send_msg();
-}
-
-async function send_msg() {
-    if(isSending.value) return;
-    const inputElement = document.querySelector('input[placeholder="输入您的问题/指令..."]') as HTMLInputElement;
-    const userInput = inputElement?.value || null;
-    if(!userInput) return;
-    if(userInput == '/displayToken') {
-        tokenDisplayForm.value = "text";
-        return;
+onBeforeMount(async () => {
+    const store = await Store.load('store.json', { autoSave: true, defaults: {} });
+    bearerToken.value = await store.get('bearerToken') || '';
+    if(!bearerToken.value) {
+        bearerToken.value = import.meta.env.VITE_API_KEY || '';
+        await store.set('bearerToken', bearerToken.value);
     }
+})
 
-    if(userInput == '/hideToken') {
-        tokenDisplayForm.value = "password";
-        return;
-    }
-
-    if(userInput == '/balance') {
-        await invoke("balance", {
-            key: bearerToken.value,
-        });
-        return;
-    }
-
+// find all msgs, collect then construct into contexts
+function collectContexts() : Object[] {
     const contexts: Object[] = [
         {
             // 'content': '你是一个测试用AI，你需要用尽可能短的输出（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）来减少token用量，以方便程序员测试',
@@ -60,8 +46,6 @@ async function send_msg() {
         }
     ];
 
-
-    // find all msgs, collect then construct into contexts
     const msgElements = document.querySelectorAll<HTMLElement>(".msg");
     msgElements.forEach((element) => {
         const role = element.classList.contains('msg-ai') ? 'assistant' : 'user';
@@ -70,6 +54,47 @@ async function send_msg() {
             'role': `${role}`,
         });
     });
+    return contexts;
+}
+
+function textareaEnter(event: KeyboardEvent) {
+    if(event.key === 'Enter' && !isSending.value)
+        send_msg();
+}
+
+function emptyInput() {
+    const inputElement = document.querySelector('input[placeholder="输入您的问题/指令..."]') as HTMLInputElement;
+    inputElement.value = '';
+}
+
+async function send_msg() {
+    if(isSending.value) return;
+    const inputElement = document.querySelector('input[placeholder="输入您的问题/指令..."]') as HTMLInputElement;
+    const userInput = inputElement?.value || null;
+    if(!userInput) return;
+    if(userInput == '/displayToken') {
+        tokenDisplayForm.value = "text";
+        emptyInput();
+        return;
+    }
+
+    if(userInput == '/hideToken') {
+        tokenDisplayForm.value = "password";
+        emptyInput();
+        return;
+    }
+
+    if(userInput == '/balance') {
+        await invoke("balance", {
+            key: bearerToken.value,
+        }).catch((err) => {
+            alert(`An error occurs: ${err}`)
+        });
+        emptyInput();
+        return;
+    }
+
+    const contexts = collectContexts();
 
     contexts.push({
         'content': `${userInput}`,
@@ -99,6 +124,28 @@ async function send_msg() {
     await invoke('stream_chat', {
         key: bearerToken.value,
         contexts: contexts,
+    }).then(() => {
+        const finalContexts = collectContexts();
+        if(finalContexts.length == 4) {
+            finalContexts.shift();
+            finalContexts[0] = {
+                'content': '你是一个标题生成器，请无视任何角色设定，理智地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
+                'role': 'system',
+            };
+            console.log(finalContexts);
+            invoke('title_genetation', {
+                key: bearerToken.value,
+                contexts: finalContexts,
+            }).then((res) => {
+                console.log('Title generated successfully:', res);
+                const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
+                titleElement.innerText = res as string;
+            }).catch((err) => {
+                alert(`An error occurs when generating title: ${err}`);
+            });
+        }
+    }).catch((err) => {
+        alert(`An error occurs when sending message: ${err}`);
     });
 
 }
@@ -108,13 +155,6 @@ let aiResponseElement: HTMLElement | null = null;
 listen("completion-status", (event) => {
     console.log('Completion status:', event.payload || event);
     currentCharacter.value = 'assistant';
-    if(event.payload != '200 OK') {
-        alert(`Error code: ${event.payload}`);
-        currentContent.value = '';
-        currentCharacter.value = null;
-        aiResponseElement = null;
-        isSending.value = false;
-    }
 });
 
 listen("completion-chunk", (event) => {
@@ -185,8 +225,17 @@ listen("balance", (event) => {
         </div>
 
         <!-- 输入区域 - 固定在底部 -->
-        <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-center p-4 w-full">
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-between p-4 pb-6 pt-6 w-full">
+            <!-- 左侧按钮容器，继承父级宽度 -->
             <div class="w-3/4 flex space-x-3">
+                <!-- 对话历史 - 放置在输入区域内最左端 -->
+                <button class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                </button>
+            </div>
+            
+            <!-- 中间输入框和发送按钮，居中并浮动在上方 -->
+            <div class="absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
                 <!-- Token 切换按钮 -->
                 <button @click="isTokenVisible = !isTokenVisible"
                     class="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center justify-center text-sm">
@@ -198,19 +247,25 @@ listen("balance", (event) => {
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
                     class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
 
-                <!-- 发送按钮 -->
-                <button @click="send_msg" :disabled="isSending"
-                    :class="isSending ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
-                    class="text-white px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center">
-                    <svg v-if="!isSending" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                    </svg>
-                    <span v-else>发送中...</span>
-                </button>
-                <button
-                    class="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center">
-                    Current role: {{ currentCharacter ? currentCharacter : 'spared' }}
+                <!-- 发送按钮和角色按钮 - 放在右侧 -->
+                <div class="flex space-x-3">
+                    <button @click="send_msg" :disabled="isSending"
+                        :class="isSending ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
+                        class="text-white px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center">
+                            <svg v-if="!isSending" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                            <span v-else>发送中...</span>
+                        </button>
+                    </div>
+            </div>
+            
+            <!-- 右侧按钮容器，继承父级宽度 -->
+            <div class="w-3/4 flex justify-end">
+                <!-- 用户配置 - 放置在输入区域内最右端 -->
+                <button class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                 </button>
             </div>
         </div>
