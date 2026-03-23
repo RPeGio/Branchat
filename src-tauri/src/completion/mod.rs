@@ -41,7 +41,7 @@ pub async fn stream_chat(app: AppHandle, key: String, contexts: Vec<MessageConte
                 }).collect::<Vec<_>>(),
             "model": "deepseek-chat",
             "stream": true,
-            "max_tokens": 2000,
+            "max_tokens": 4000,
             "temperature": 0.7
         }))
         .send()
