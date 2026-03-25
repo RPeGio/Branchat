@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeMount, ref } from 'vue';
+import { onBeforeMount, ref, watch } from 'vue';
 import History from './components/History.vue';
+import UserConfig from './components/UserConfig.vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
@@ -9,7 +10,7 @@ import { MdToHtml } from 'streaming-md-to-html';
 // import msgslot from './components/msgslot.vue';
 
 interface balanceMessage {
-    available: string,
+    available: boolean,
     balance: string | null,
     currency: string | null,
 }
@@ -28,7 +29,7 @@ interface ContextItem {
 
 
 const showHistory = ref(false);
-const currentContent = ref<string>('');
+const showConfig = ref(false);
 const currentId = ref<number | undefined>(undefined);
 const isSending = ref<boolean>(false);
 const isTokenVisible = ref<boolean>(false);
@@ -59,7 +60,7 @@ onBeforeMount(async () => {
     }
 })
 
-const handleLoadHistory = (item: HistoryItem) => {
+const loadHistoryToApp = (item: HistoryItem) => {
     console.log('加载历史记录:', item);
     const title = item.title;
     const contexts = item.contexts;
@@ -153,7 +154,7 @@ async function updateHistory(title?: string) {
         history[currentHistoryIndex].contexts = contexts;
     }
     await store.set('history', history);
-    console.log(history);
+    // console.log(history);
 }
 
 async function clearHistory() {
@@ -212,7 +213,7 @@ async function send_msg() {
             return;
         }
         systemPrompt.value = customPrompt;
-        console.log(systemPrompt.value);
+        // console.log(systemPrompt.value);
         emptyInput();
         return;
     }
@@ -240,7 +241,7 @@ async function send_msg() {
         msgContainer.appendChild(node);
     }
 
-    console.log(contexts);
+    // console.log(contexts);
 
     isSending.value = true;
 
@@ -255,7 +256,7 @@ async function send_msg() {
                 'content': '你是一个标题生成器，请无视任何角色设定，理智地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
                 'role': 'system',
             };
-            console.log(finalContexts);
+            // console.log(finalContexts);
             invoke('title_genetation', {
                 key: bearerToken.value,
                 contexts: finalContexts,
@@ -272,9 +273,18 @@ async function send_msg() {
         updateHistory();
     }).catch((err) => {
         alert(`An error occurs when sending message: ${err}`);
+        currentCharacter.value = null;
+        isSending.value = false;
     });
 
 }
+
+watch(bearerToken, async (newToken, oldToken) => {
+    if (newToken != oldToken) {
+        const store = await Store.load('store.json');
+        await store.set('bearerToken', newToken);
+    }
+});
 
 let aiResponseElement: HTMLElement | null = null;
 
@@ -314,7 +324,6 @@ listen("completion-chunk", (event) => {
 
 listen("completion-end", (event) => {
     console.log('Completion end:', event.payload || event);
-    currentContent.value = '';
     currentCharacter.value = null;
     aiResponseElement = null;
     isSending.value = false;
@@ -341,10 +350,10 @@ listen("balance", (event) => {
         <Transition name="mask" enter-active-class="transition ease-in-out duration-300" enter-from-class="opacity-0"
             enter-to-class="opacity-100" leave-active-class="transition ease-in-out duration-300"
             leave-from-class="opacity-100" leave-to-class="opacity-0">
-            <div v-if="showHistory" class="fixed inset-0 bg-black/40 z-40" @click="showHistory = false"></div>
+            <div v-if="showHistory || showConfig" class="fixed inset-0 bg-black/40 z-40" @click="showHistory = false, showConfig = false"></div>
         </Transition>
-        <History :is-visible="showHistory" :history-items="historyItems" @close="showHistory = false"
-            @load="handleLoadHistory" />
+        <History :isVisible="showHistory" :historyItems="historyItems" @close="showHistory = false" @load="loadHistoryToApp" />
+        <UserConfig @close="showConfig = false" />
 
         <!-- Token 输入区域 - 可展开/收起 -->
         <div class="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 p-4 w-full z-10"
@@ -366,7 +375,7 @@ listen("balance", (event) => {
             <div class="w-3/4 flex space-x-3">
                 <!-- 对话历史 - 放置在输入区域内最左端 -->
                 <button @click="showHistory = true, loadHistoryItems()"
-                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center">
+                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                         stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"></circle>
@@ -386,7 +395,7 @@ listen("balance", (event) => {
 
                 <!-- 输入框 -->
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
-                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
+                    class="w-lg px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
 
                 <!-- 发送按钮和角色按钮 - 放在右侧 -->
                 <div class="flex space-x-3">
@@ -406,7 +415,7 @@ listen("balance", (event) => {
             <div class="w-3/4 flex justify-end">
                 <!-- 用户配置 - 放置在输入区域内最右端 -->
                 <button
-                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center">
+                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                         stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>

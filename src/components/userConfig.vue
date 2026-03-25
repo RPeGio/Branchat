@@ -1,11 +1,14 @@
 <script setup lang="ts">
+// const emits = defineEmits<{
+//     close: [];
+// }>();
+
 
 </script>
 
 <template>
     <!-- # TODO: 自定义用户配置
-    1. 自定义system prompt
+    1. 自定义system prompt/Global system prompt
     2. 自定义模型参数
-    3. 指令列表指南
-    4.  -->
+    3. 指令列表指南 -->
 </template>
