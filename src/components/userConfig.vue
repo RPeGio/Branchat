@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import type { ConfigItem } from '../data/types';
 
 interface Props {
@@ -24,6 +23,7 @@ const config = defineModel<ConfigItem>('userConfig', {
         frequencyPenalty: 0.5
     })
 });
+const isFirstMessageSent = defineModel<boolean>('isFirstMessageSent');
 // const { systemPrompt, temperature, maxTokens, topP, frequencyPenalty } = toRefs(config.value as ConfigItem);
 
 // 监听config变化，便于调试
@@ -39,10 +39,10 @@ const config = defineModel<ConfigItem>('userConfig', {
 // });
 
 // 判断当前对话系统提示词是否应该被锁定
-const isCurrentPromptLocked = computed(() => {
-    // 一旦当前对话系统提示词被设置（非空），就永久锁定
-    return config.value.systemPrompt.trim() !== '';
-});
+// const isCurrentPromptLocked = computed(() => {
+//     // 一旦当前对话系统提示词被设置（非空），就永久锁定
+//     return config.value.systemPrompt.trim() !== '';
+// });
 
 // 关闭配置面板
 const closeConfig = () => {
@@ -100,20 +100,20 @@ defineExpose({
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <span v-if="isCurrentPromptLocked" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                                已锁定（当前对话已开始）
+                            <span v-if="isFirstMessageSent" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                （当前对话已开始，不可再更改提示词）
                             </span>
                         </div>
                         <textarea v-model="config.systemPrompt"
-                            :disabled="isCurrentPromptLocked"
+                            :disabled="isFirstMessageSent"
                             :class="[
                                 'w-full h-32 px-4 py-2 border rounded-lg focus:outline-none resize-none',
-                                isCurrentPromptLocked 
+                                isFirstMessageSent 
                                     ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed' 
                                     : 'border-gray-300 bg-white focus:ring-2 focus:ring-blue-500'
                             ]"
                             :placeholder="globalSystemPrompt ? globalSystemPrompt: defaultSystemPrompt"
-                            :title="isCurrentPromptLocked ? '当前对话已开始，无法修改系统提示词' : ''"></textarea>
+                            :title="isFirstMessageSent ? '当前对话已开始，无法修改系统提示词' : ''"></textarea>
                     </div>
                 </div>
 

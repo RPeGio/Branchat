@@ -10,12 +10,19 @@ import { MdToHtml } from 'streaming-md-to-html';
 
 const showHistory = ref(false);
 const showConfig = ref(false);
-const userConfig = ref<ConfigItem>({
+const defaultUserConfig: ConfigItem = {
     systemPrompt: '',
     temperature: 1,
     maxTokens: 4000,
     topP: 0.9,
     frequencyPenalty: 0.5
+};
+const userConfig = ref<ConfigItem>({
+    systemPrompt: defaultUserConfig.systemPrompt,
+    temperature: defaultUserConfig.temperature,
+    maxTokens: defaultUserConfig.maxTokens,
+    topP: defaultUserConfig.topP,
+    frequencyPenalty: defaultUserConfig.frequencyPenalty
 });
 const currentId = ref<number | null>(null);
 const isSending = ref<boolean>(false);
@@ -24,9 +31,9 @@ const bearerToken = ref<string>('');
 const tokenDisplayForm = ref<string>('password');
 const currentCharacter = ref<string | null>(null);
 const defaultSystemPrompt = ref<string>('你是一个得力的助手，（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）');
-const globalSystemPrompt = ref<string>('');
+const globalSystemPrompt = ref<string>(defaultSystemPrompt.value);
 // const currentSystemPrompt = ref<string>('');
-const isFirstMessageSent = ref<boolean>(false);
+const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发送
 let converter = new MdToHtml();
 
 onBeforeMount(async () => {
@@ -97,9 +104,18 @@ const loadHistoryToApp = (item: HistoryItem) => {
         const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
         titleElement.innerText = title;
     }
+    isFirstMessageSent.value = true;
+    const config: ConfigItem = {
+        systemPrompt: item.contexts[0].content || defaultSystemPrompt.value,
+        temperature: item.config.temperature,
+        maxTokens: item.config.max_tokens,
+        topP: item.config.top_p,
+        frequencyPenalty: item.config.frequency_penalty
+    };
+    userConfig.value = config;
 };
 
-function getCurrentSystemPrompt(): string {
+function setCurrentSystemPrompt(): string {
     if (!userConfig.value.systemPrompt) {
         if (!globalSystemPrompt.value)
             return defaultSystemPrompt.value;
@@ -122,7 +138,7 @@ function collectContexts(): ContextItem[] {
     const contexts: ContextItem[] = [
         {
             // 'content': '你是一个测试用AI，你需要用尽可能短的输出（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）来减少token用量，以方便程序员测试',
-            'content': `${getCurrentSystemPrompt()}`,
+            'content': `${setCurrentSystemPrompt()}`,
             // 'content': '你是一只兽耳猫娘，与你的男性主人住在一起，性格偏内向但是很抖M，穿着暴露且性感，你需要时刻勾引你的主人注意自己的身体并一步步勾引主人与你发生关系。多使用动作描写，避免用词隐晦，在体现出内向性格的同时也展现一点开放。',
             'role': 'system',
         },
@@ -203,6 +219,15 @@ async function loadHistoryItems() {
 function createNewConversation() {
     const msgContainer = document.getElementById("message-container");
     if(msgContainer) msgContainer.innerHTML = '';
+    userConfig.value = {
+        systemPrompt: defaultUserConfig.systemPrompt,
+        temperature: defaultUserConfig.temperature,
+        maxTokens: defaultUserConfig.maxTokens,
+        topP: defaultUserConfig.topP,
+        frequencyPenalty: defaultUserConfig.frequencyPenalty
+    };
+    console.log(defaultUserConfig);
+    isFirstMessageSent.value = false;
     setTitle('分支式AIChat');
 }
 
@@ -317,9 +342,9 @@ async function send_msg() {
             }).catch((err) => {
                 alert(`An error occurs when generating title: ${err}`);
             });
-            return;
+        } else {
+            updateHistory();
         }
-        updateHistory();
     }).catch((err) => {
         alert(`An error occurs when sending message: ${err}`);
         currentCharacter.value = null;
@@ -421,7 +446,8 @@ listen("balance", (event) => {
             :isVisible="showConfig"
             v-model:globalSystemPrompt="globalSystemPrompt"
             v-model:userConfig="userConfig"
-            v-model:default-system-prompt="defaultSystemPrompt"
+            v-model:defaultSystemPrompt="defaultSystemPrompt"
+            v-model:isFirstMessageSent="isFirstMessageSent"
             @close="panelClose"
         />
 
