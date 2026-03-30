@@ -1,41 +1,39 @@
 <script setup lang="ts">
-import { onBeforeMount, ref } from 'vue';
+import { onBeforeMount, ref, watch } from 'vue';
 import History from './components/History.vue';
+import UserConfig from './components/UserConfig.vue';
+import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer } from './data/types'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
 import { MdToHtml } from 'streaming-md-to-html';
-// import MdToHtmlEnhancer from './utils/MdToHtmlEnhancer';
-// import msgslot from './components/msgslot.vue';
-
-interface balanceMessage {
-    available: string,
-    balance: string | null,
-    currency: string | null,
-}
-
-interface HistoryItem {
-    id: number;
-    title: string;
-    timestamp: Date;
-    contexts: ContextItem[];
-}
-
-interface ContextItem {
-    role: string;
-    content: string;
-}
-
 
 const showHistory = ref(false);
-const currentContent = ref<string>('');
-const currentId = ref<number | undefined>(undefined);
+const showConfig = ref(false);
+const defaultUserConfig: ConfigItem = {
+    systemPrompt: '',
+    temperature: 1,
+    maxTokens: 4000,
+    topP: 0.9,
+    frequencyPenalty: 0.5
+};
+const userConfig = ref<ConfigItem>({
+    systemPrompt: defaultUserConfig.systemPrompt,
+    temperature: defaultUserConfig.temperature,
+    maxTokens: defaultUserConfig.maxTokens,
+    topP: defaultUserConfig.topP,
+    frequencyPenalty: defaultUserConfig.frequencyPenalty
+});
+const currentId = ref<number | null>(null);
 const isSending = ref<boolean>(false);
 const isTokenVisible = ref<boolean>(false);
 const bearerToken = ref<string>('');
 const tokenDisplayForm = ref<string>('password');
 const currentCharacter = ref<string | null>(null);
-const systemPrompt = ref<string>('你是一个得力的助手，（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）')
+const defaultSystemPrompt = ref<string>('你是一个得力的助手，（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）');
+const globalSystemPrompt = ref<string>(defaultSystemPrompt.value);
+// const currentSystemPrompt = ref<string>('');
+const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发送
 let converter = new MdToHtml();
 
 onBeforeMount(async () => {
@@ -43,12 +41,8 @@ onBeforeMount(async () => {
         autoSave: true, defaults: {
             'bearerToken': '',
             'history': [],
-            'userConfig': {
-                'systemPrompt': `${systemPrompt.value}`,
-                'modelParams': {
-                    'max_tokens': 4000,
-                    'temperature': 0.7
-                }
+            'globalUserConfig': {
+                'globalSystemPrompt': `${defaultSystemPrompt.value}`,
             }
         }
     });
@@ -57,9 +51,21 @@ onBeforeMount(async () => {
         bearerToken.value = import.meta.env.VITE_API_KEY || '';
         await store.set('bearerToken', bearerToken.value);
     }
+    
+    // 从存储加载用户配置
+    const globalConfig = await store.get('globalUserConfig') as GlobalUserConfig;
+    if (globalConfig) {
+        globalSystemPrompt.value = globalConfig.globalSystemPrompt;
+    }
 })
 
-const handleLoadHistory = (item: HistoryItem) => {
+// 处理背景遮罩点击事件
+const panelClose = () => {
+    showHistory.value = false;
+    showConfig.value = false;
+};
+
+const loadHistoryToApp = (item: HistoryItem) => {
     console.log('加载历史记录:', item);
     const title = item.title;
     const contexts = item.contexts;
@@ -98,13 +104,41 @@ const handleLoadHistory = (item: HistoryItem) => {
         const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
         titleElement.innerText = title;
     }
+    isFirstMessageSent.value = true;
+    const config: ConfigItem = {
+        systemPrompt: item.contexts[0].content || defaultSystemPrompt.value,
+        temperature: item.config.temperature,
+        maxTokens: item.config.max_tokens,
+        topP: item.config.top_p,
+        frequencyPenalty: item.config.frequency_penalty
+    };
+    userConfig.value = config;
 };
 
+function setCurrentSystemPrompt(): string {
+    if (!userConfig.value.systemPrompt) {
+        if (!globalSystemPrompt.value)
+            return defaultSystemPrompt.value;
+        return globalSystemPrompt.value;
+    }
+    return userConfig.value.systemPrompt;
+}
+
+function getModelConfig(userConfig: ConfigItem): ModelParamsForServer {
+    return {
+        temperature: userConfig.temperature,
+        max_tokens: userConfig.maxTokens,
+        top_p: userConfig.topP,
+        frequency_penalty: userConfig.frequencyPenalty,
+    }
+}
+
 function collectContexts(): ContextItem[] {
+
     const contexts: ContextItem[] = [
         {
             // 'content': '你是一个测试用AI，你需要用尽可能短的输出（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）来减少token用量，以方便程序员测试',
-            'content': `${systemPrompt.value}`,
+            'content': `${setCurrentSystemPrompt()}`,
             // 'content': '你是一只兽耳猫娘，与你的男性主人住在一起，性格偏内向但是很抖M，穿着暴露且性感，你需要时刻勾引你的主人注意自己的身体并一步步勾引主人与你发生关系。多使用动作描写，避免用词隐晦，在体现出内向性格的同时也展现一点开放。',
             'role': 'system',
         },
@@ -125,14 +159,26 @@ function collectContexts(): ContextItem[] {
     return contexts;
 }
 
+function getInputElement(): HTMLInputElement {
+    return document.querySelector('input[placeholder="输入您的问题/指令..."]') as HTMLInputElement;
+}
+
 function textareaEnter(event: KeyboardEvent) {
-    if (event.key === 'Enter' && !isSending.value)
+    if (event.key === 'Enter' && !isSending.value) {
         send_msg();
+    }
 }
 
 function emptyInput() {
-    const inputElement = document.querySelector('input[placeholder="输入您的问题/指令..."]') as HTMLInputElement;
+    const inputElement = getInputElement();
     inputElement.value = '';
+}
+
+function formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = ('0' + (date.getMonth() + 1)).slice(-2);
+    const day = ('0' + date.getDate()).slice(-2);
+    return `${year}-${month}-${day}`;
 }
 
 async function updateHistory(title?: string) {
@@ -140,20 +186,23 @@ async function updateHistory(title?: string) {
     const store = await Store.load('store.json');
     const history: HistoryItem[] = await store.get('history') || [];
     const historyLength = history.length;
+    const modelConfig = getModelConfig(userConfig.value);
     if (title) {
         history.push({
             'id': historyLength,
             'title': title,
-            'timestamp': new Date(Date.now()),
+            'date': formatDate(new Date(Date.now())),
+            'config': modelConfig,
             'contexts': contexts,
         });
         currentId.value = historyLength;
     } else {
         const currentHistoryIndex = history.findIndex(h => h.id === currentId.value);
+        history[currentHistoryIndex].config = modelConfig;
         history[currentHistoryIndex].contexts = contexts;
     }
     await store.set('history', history);
-    console.log(history);
+    // console.log(history);
 }
 
 async function clearHistory() {
@@ -167,9 +216,29 @@ async function loadHistoryItems() {
     historyItems.value = await store.get('history') || [];
 }
 
+function createNewConversation() {
+    const msgContainer = document.getElementById("message-container");
+    if(msgContainer) msgContainer.innerHTML = '';
+    userConfig.value = {
+        systemPrompt: defaultUserConfig.systemPrompt,
+        temperature: defaultUserConfig.temperature,
+        maxTokens: defaultUserConfig.maxTokens,
+        topP: defaultUserConfig.topP,
+        frequencyPenalty: defaultUserConfig.frequencyPenalty
+    };
+    console.log(defaultUserConfig);
+    isFirstMessageSent.value = false;
+    setTitle('分支式AIChat');
+}
+
+function setTitle(title: string) {
+    const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
+    titleElement.innerText = title;
+}
+
 async function send_msg() {
     if (isSending.value) return;
-    const inputElement = document.querySelector('input[placeholder="输入您的问题/指令..."]') as HTMLInputElement;
+    const inputElement = getInputElement();
     const userInput = inputElement?.value || null;
     if (!userInput) return;
     if (userInput == '/displayToken') {
@@ -204,18 +273,10 @@ async function send_msg() {
         return;
     }
 
-    if (userInput == '/setSystemPrompt') {
-        let customPrompt = prompt('自定义系统提示词：');
-        if (!customPrompt) {
-            alert("提示词不能为空！");
-            emptyInput();
-            return;
-        }
-        systemPrompt.value = customPrompt;
-        console.log(systemPrompt.value);
-        emptyInput();
-        return;
-    }
+    const config = userConfig.value;
+    console.log(config);
+    const modelConfig = getModelConfig(userConfig.value);
+    console.log(modelConfig);
 
     const contexts = collectContexts();
 
@@ -240,41 +301,64 @@ async function send_msg() {
         msgContainer.appendChild(node);
     }
 
-    console.log(contexts);
+    // console.log(contexts);
 
     isSending.value = true;
 
     await invoke('stream_chat', {
         key: bearerToken.value,
         contexts: contexts,
+        modelConfig: modelConfig,
+        // 尽管后端标注的变量名是model_config，但是Tauri的命令系统会自动处理命名转换，这里必须用小驼峰
+        // 到底有多屎
     }).then(() => {
+        // 首次成功发送消息，触发系统提示词同步
+        if (!isFirstMessageSent.value) {
+            isFirstMessageSent.value = true;
+            
+            // 检查是否需要同步系统提示词
+            if (userConfig.value && (!userConfig.value.systemPrompt || userConfig.value.systemPrompt.trim() === '')) {
+                // 同步全局系统提示词到当前对话
+                userConfig.value.systemPrompt = globalSystemPrompt.value;
+                console.log('首次发送消息成功，已同步全局系统提示词到当前对话');
+            }
+        }
+        
         const finalContexts = collectContexts();
         if (finalContexts.length == 4) {
             finalContexts.shift();
             finalContexts[0] = {
-                'content': '你是一个标题生成器，请无视任何角色设定，理智地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
+                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
                 'role': 'system',
             };
-            console.log(finalContexts);
+            // console.log(finalContexts);
             invoke('title_genetation', {
                 key: bearerToken.value,
                 contexts: finalContexts,
             }).then((res) => {
                 console.log('Title generated successfully:', res);
-                const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
-                titleElement.innerText = res as string;
+                setTitle(res as string);
                 updateHistory(res as string);
             }).catch((err) => {
                 alert(`An error occurs when generating title: ${err}`);
             });
-            return;
+        } else {
+            updateHistory();
         }
-        updateHistory();
     }).catch((err) => {
         alert(`An error occurs when sending message: ${err}`);
+        currentCharacter.value = null;
+        isSending.value = false;
     });
 
 }
+
+watch(bearerToken, async (newToken, oldToken) => {
+    if (newToken != oldToken) {
+        const store = await Store.load('store.json');
+        await store.set('bearerToken', newToken);
+    }
+});
 
 let aiResponseElement: HTMLElement | null = null;
 
@@ -314,7 +398,6 @@ listen("completion-chunk", (event) => {
 
 listen("completion-end", (event) => {
     console.log('Completion end:', event.payload || event);
-    currentContent.value = '';
     currentCharacter.value = null;
     aiResponseElement = null;
     isSending.value = false;
@@ -323,9 +406,14 @@ listen("completion-end", (event) => {
 
 listen("balance", (event) => {
     console.log('Balance info:', event.payload);
-    const infos = event.payload as balanceMessage;
+    const infos = event.payload as BalanceMessage;
     alert(`当前api-key可用性：${infos.available}\n当前剩余余额：${infos.balance} ${infos.currency}`);
-})
+});
+
+// watch(globalSystemPrompt, (_, __) => {
+//     // console.log(globalSystemPrompt.value);
+//     console.log(userConfig.value);
+// });
 </script>
 
 <template>
@@ -341,10 +429,27 @@ listen("balance", (event) => {
         <Transition name="mask" enter-active-class="transition ease-in-out duration-300" enter-from-class="opacity-0"
             enter-to-class="opacity-100" leave-active-class="transition ease-in-out duration-300"
             leave-from-class="opacity-100" leave-to-class="opacity-0">
-            <div v-if="showHistory" class="fixed inset-0 bg-black/40 z-40" @click="showHistory = false"></div>
+            <div
+                v-if="showHistory || showConfig" 
+                class="fixed inset-0 bg-black/40 z-40" 
+                @click="panelClose"
+            ></div>
         </Transition>
-        <History :is-visible="showHistory" :history-items="historyItems" @close="showHistory = false"
-            @load="handleLoadHistory" />
+        <History 
+            :isVisible="showHistory" 
+            :historyItems="historyItems" 
+            @close="panelClose" 
+            @load="loadHistoryToApp" 
+            @new-conversation="createNewConversation" 
+        />
+        <UserConfig 
+            :isVisible="showConfig"
+            v-model:globalSystemPrompt="globalSystemPrompt"
+            v-model:userConfig="userConfig"
+            v-model:defaultSystemPrompt="defaultSystemPrompt"
+            v-model:isFirstMessageSent="isFirstMessageSent"
+            @close="panelClose"
+        />
 
         <!-- Token 输入区域 - 可展开/收起 -->
         <div class="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 p-4 w-full z-10"
@@ -366,7 +471,7 @@ listen("balance", (event) => {
             <div class="w-3/4 flex space-x-3">
                 <!-- 对话历史 - 放置在输入区域内最左端 -->
                 <button @click="showHistory = true, loadHistoryItems()"
-                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center">
+                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                         stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"></circle>
@@ -386,7 +491,7 @@ listen("balance", (event) => {
 
                 <!-- 输入框 -->
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
-                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
+                    class="w-lg px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
 
                 <!-- 发送按钮和角色按钮 - 放在右侧 -->
                 <div class="flex space-x-3">
@@ -406,7 +511,8 @@ listen("balance", (event) => {
             <div class="w-3/4 flex justify-end">
                 <!-- 用户配置 - 放置在输入区域内最右端 -->
                 <button
-                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center">
+                    @click="showConfig = true"
+                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                         stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>
