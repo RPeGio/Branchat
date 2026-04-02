@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+/* 恢复默认列表样式，解决Tailwind CSS样式重置导致的缩进问题 */
+ol, ul, menu {
+  list-style: revert;
+  padding-left: 1.5em;
+}
+
+/* 确保列表项的内容不会溢出容器 */
+li {
+  overflow: visible;
+  word-wrap: break-word;
+}
+
+/* 禁止除表单元素和class包含msg的元素以外的所有元素的文本选择 */
+* {
+  user-select: none;
+}
+
+/* 允许表单元素的文本选择 */
+input, textarea, select, button {
+  user-select: auto;
+}

@@ -5,7 +5,7 @@ use serde;
 use serde_json::{self};
 use tauri::{AppHandle, Emitter};
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct MessageContext {
     pub content: String,
     pub role: String,
@@ -38,7 +38,52 @@ pub async fn stream_chat(
     let client = reqwest::Client::new();
     
     println!("Sending request to DeepSeek API...");
-    
+//     app.emit("completion-chunk", "
+// # 标题1
+// ## 标题2
+
+// 这是一个段落，包含**粗体**和*斜体*文本。
+
+// - 无序列表项1
+// - 无序列表项2
+
+// 1. 有序列表项1
+// 2. 有序列表项2
+
+// > 这是一个引用块
+
+// `行内代码`
+
+// # 数学公式测试
+
+// 行内公式：$E = mc^2$
+
+// 块级公式：
+// $$
+// \\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}
+// $$
+
+// 转义括号公式：\\(a^2 + b^2 = c^2\\) 和 \\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]
+
+// # GFM扩展语法测试
+
+// ## 表格
+
+// | 姓名 | 年龄 | 城市 |
+// | ---- | ---- | ---- |
+// | 张三 | 25   | 北京 |
+// | 李四 | 30   | 上海 |
+
+// ## 删除线
+
+// ~~这是删除的文本~~
+
+// ## 任务列表
+
+// - [x] 已完成任务
+// - [ ] 未完成任务
+//     ").unwrap();
+
     let response = client
         .post("https://api.deepseek.com/chat/completions")
         .header("Authorization", format!("Bearer {}", key))
@@ -149,9 +194,11 @@ pub async fn balance(app: AppHandle, key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn title_genetation(key: String, contexts: Vec<MessageContext>) -> Result<String, String> {
+pub async fn title_generation(key: String, contexts: Vec<MessageContext>) -> Result<String, String> {
     if key.is_empty() { return Err("Bearer token is required!".to_string()); }
     let client = reqwest::Client::new();
+
+    // println!("{:#?}", contexts);
     
     println!("Sending title generation request to DeepSeek API...");
     
@@ -191,6 +238,7 @@ pub async fn title_genetation(key: String, contexts: Vec<MessageContext>) -> Res
         }
 
         if let Some(title) = body["choices"][0]["message"]["content"].as_str() {
+            // println!("OK!");
             return Ok(title.to_string());
         }
     }

@@ -9,7 +9,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             completion::stream_chat,
             completion::balance,
-            completion::title_genetation,
+            completion::title_generation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

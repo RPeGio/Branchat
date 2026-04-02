@@ -6,7 +6,7 @@ import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, Config
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
-import { MdToHtml } from 'streaming-md-to-html';
+import { processMarkdown } from './utils/markdownRenderer/processor';
 
 const showHistory = ref(false);
 const showConfig = ref(false);
@@ -26,15 +26,16 @@ const userConfig = ref<ConfigItem>({
 });
 const currentId = ref<number | null>(null);
 const isSending = ref<boolean>(false);
+const markdownRawLines = ref<string>('');
 const isTokenVisible = ref<boolean>(false);
 const bearerToken = ref<string>('');
 const tokenDisplayForm = ref<string>('password');
 const currentCharacter = ref<string | null>(null);
-const defaultSystemPrompt = ref<string>('你是一个得力的助手，（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）');
-const globalSystemPrompt = ref<string>(defaultSystemPrompt.value);
+const defaultSystemPrompt = '你是一个得力的助手';
+const globalSystemPrompt = ref<string>(`${defaultSystemPrompt}`);
 // const currentSystemPrompt = ref<string>('');
 const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发送
-let converter = new MdToHtml();
+// let converter = new MdToHtml();
 
 onBeforeMount(async () => {
     const store = await Store.load('store.json', {
@@ -42,7 +43,7 @@ onBeforeMount(async () => {
             'bearerToken': '',
             'history': [],
             'globalUserConfig': {
-                'globalSystemPrompt': `${defaultSystemPrompt.value}`,
+                'globalSystemPrompt': `${defaultSystemPrompt}`,
             }
         }
     });
@@ -51,8 +52,7 @@ onBeforeMount(async () => {
         bearerToken.value = import.meta.env.VITE_API_KEY || '';
         await store.set('bearerToken', bearerToken.value);
     }
-    
-    // 从存储加载用户配置
+
     const globalConfig = await store.get('globalUserConfig') as GlobalUserConfig;
     if (globalConfig) {
         globalSystemPrompt.value = globalConfig.globalSystemPrompt;
@@ -60,44 +60,46 @@ onBeforeMount(async () => {
 })
 
 // 处理背景遮罩点击事件
-const panelClose = () => {
+const panelClose = async () => {
+    await (await Store.load('store.json')).set('globalUserConfig', {
+        globalSystemPrompt: globalSystemPrompt.value,
+    } as GlobalUserConfig),
     showHistory.value = false;
     showConfig.value = false;
 };
 
-const loadHistoryToApp = (item: HistoryItem) => {
+const loadHistoryToApp = async (item: HistoryItem) => {
     console.log('加载历史记录:', item);
     const title = item.title;
     const contexts = item.contexts;
     const msgContainer = document.getElementById("message-container") as HTMLElement;
     if (msgContainer) {
         msgContainer.innerHTML = '';
-        contexts.forEach((msg: ContextItem) => {
+        for (const msg of contexts) {
+            // console.log(msg);
             if (msg.role === 'user') {
                 let node = document.createElement('div');
                 node.innerHTML = `
                     <div class="flex justify-end">
                         <div class="bg-green-400 text-gray-800 rounded-lg px-4 py-3 max-w-[70%]">
-                            <p class="msg msg-user text-gray-800">${msg.content}</p>
+                            <div class="msg msg-user text-gray-800 !select-text">${msg.content}</div>
                         </div>
                     </div>
                 `;
                 msgContainer.appendChild(node);
             } else if (msg.role === 'assistant') {
-                converter.append(`${msg.content}`);
-                const parsedElement = MdToHtml.getHtml(converter.lines);
+                const parsedElement = await processMarkdown(msg.content);
                 let node = document.createElement('div');
                 node.innerHTML = `
                     <div class="flex justify-start">
                         <div class="bg-blue-100 rounded-lg px-4 py-3 max-w-[70%]">
-                            <p class="msg msg-ai text-gray-800">${parsedElement}</p>
+                            <div class="msg msg-ai text-gray-800 [&_*]:!select-text">${parsedElement}</div>
                         </div>
                     </div>
                 `;
                 msgContainer.appendChild(node);
-                converter = new MdToHtml();
             }
-        });
+        }
         currentId.value = item.id;
     }
     if (title) {
@@ -106,7 +108,7 @@ const loadHistoryToApp = (item: HistoryItem) => {
     }
     isFirstMessageSent.value = true;
     const config: ConfigItem = {
-        systemPrompt: item.contexts[0].content || defaultSystemPrompt.value,
+        systemPrompt: item.contexts[0].content || defaultSystemPrompt,
         temperature: item.config.temperature,
         maxTokens: item.config.max_tokens,
         topP: item.config.top_p,
@@ -118,7 +120,7 @@ const loadHistoryToApp = (item: HistoryItem) => {
 function setCurrentSystemPrompt(): string {
     if (!userConfig.value.systemPrompt) {
         if (!globalSystemPrompt.value)
-            return defaultSystemPrompt.value;
+            return defaultSystemPrompt;
         return globalSystemPrompt.value;
     }
     return userConfig.value.systemPrompt;
@@ -149,6 +151,7 @@ function collectContexts(): ContextItem[] {
     ];
 
     const msgElements = document.querySelectorAll<HTMLElement>(".msg");
+    // console.log(msgElements);
     msgElements.forEach((element) => {
         const role = element.classList.contains('msg-ai') ? 'assistant' : 'user';
         contexts.push({
@@ -181,13 +184,35 @@ function formatDate(date: Date): string {
     return `${year}-${month}-${day}`;
 }
 
-async function updateHistory(title?: string) {
-    const contexts = collectContexts();
+async function updateHistory(userInput: string, title?: string) {
     const store = await Store.load('store.json');
     const history: HistoryItem[] = await store.get('history') || [];
     const historyLength = history.length;
+    const currentHistoryIndex = history.findIndex(h => h.id === currentId.value);
     const modelConfig = getModelConfig(userConfig.value);
+
     if (title) {
+        const contexts: ContextItem[] = [
+            {
+                // 'content': '你是一个测试用AI，你需要用尽可能短的输出（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）来减少token用量，以方便程序员测试',
+                'content': `${setCurrentSystemPrompt()}`,
+                // 'content': '你是一只兽耳猫娘，与你的男性主人住在一起，性格偏内向但是很抖M，穿着暴露且性感，你需要时刻勾引你的主人注意自己的身体并一步步勾引主人与你发生关系。多使用动作描写，避免用词隐晦，在体现出内向性格的同时也展现一点开放。',
+                'role': 'system',
+            },
+            {
+                'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, input=true||false（是否需要用户输入补充细节）][<反向选项>， input=true||false（是否需要用户输入补充细节）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
+                'role': 'system',
+            },
+            {
+                role: 'user',
+                content: userInput,
+            },
+            {
+                role: 'assistant',
+                content: markdownRawLines.value,
+            }
+        ];
+        console.log(contexts);
         history.push({
             'id': historyLength,
             'title': title,
@@ -197,9 +222,18 @@ async function updateHistory(title?: string) {
         });
         currentId.value = historyLength;
     } else {
-        const currentHistoryIndex = history.findIndex(h => h.id === currentId.value);
+        const contexts: ContextItem[] = [
+            {
+                role: 'user',
+                content: userInput,
+            },
+            {
+                role: 'assistant',
+                content: markdownRawLines.value,
+            }
+        ];
         history[currentHistoryIndex].config = modelConfig;
-        history[currentHistoryIndex].contexts = contexts;
+        history[currentHistoryIndex].contexts = history[currentHistoryIndex].contexts.concat(contexts);
     }
     await store.set('history', history);
     // console.log(history);
@@ -218,7 +252,7 @@ async function loadHistoryItems() {
 
 function createNewConversation() {
     const msgContainer = document.getElementById("message-container");
-    if(msgContainer) msgContainer.innerHTML = '';
+    if (msgContainer) msgContainer.innerHTML = '';
     userConfig.value = {
         systemPrompt: defaultUserConfig.systemPrompt,
         temperature: defaultUserConfig.temperature,
@@ -273,10 +307,8 @@ async function send_msg() {
         return;
     }
 
-    const config = userConfig.value;
-    console.log(config);
     const modelConfig = getModelConfig(userConfig.value);
-    console.log(modelConfig);
+    // console.log(modelConfig);
 
     const contexts = collectContexts();
 
@@ -294,7 +326,7 @@ async function send_msg() {
         node.innerHTML = `
             <div class="flex justify-end">
                 <div class="bg-green-400 text-gray-800 rounded-lg px-4 py-3 max-w-[70%]">
-                    <p class="msg msg-user text-gray-800">${userInput}</p>
+                    <div class="msg msg-user text-gray-800 !select-text">${userInput}</div>
                 </div>
             </div>
         `;
@@ -311,44 +343,59 @@ async function send_msg() {
         modelConfig: modelConfig,
         // 尽管后端标注的变量名是model_config，但是Tauri的命令系统会自动处理命名转换，这里必须用小驼峰
         // 到底有多屎
-    }).then(() => {
+    }).then(async () => {
         // 首次成功发送消息，触发系统提示词同步
         if (!isFirstMessageSent.value) {
             isFirstMessageSent.value = true;
-            
+
             // 检查是否需要同步系统提示词
             if (userConfig.value && (!userConfig.value.systemPrompt || userConfig.value.systemPrompt.trim() === '')) {
                 // 同步全局系统提示词到当前对话
                 userConfig.value.systemPrompt = globalSystemPrompt.value;
-                console.log('首次发送消息成功，已同步全局系统提示词到当前对话');
+                // console.log('首次发送消息成功，已同步全局系统提示词到当前对话');
             }
         }
-        
+
         const finalContexts = collectContexts();
-        if (finalContexts.length == 4) {
+        
+        if (finalContexts && finalContexts.length == 4) {
+            // console.log('collectContexts returned:', finalContexts);
+            // console.log('Array length:', finalContexts?.length);
+            // if (finalContexts) {
+            //     finalContexts.forEach((ctx, index) => {
+            //         console.log(`Context[${index}]:`, {
+            //             role: ctx.role,
+            //             content: ctx.content.substring(0, 50) + (ctx.content.length > 50 ? '...' : '')
+            //         });
+            //     });
+            // }
             finalContexts.shift();
             finalContexts[0] = {
                 'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
                 'role': 'system',
             };
             // console.log(finalContexts);
-            invoke('title_genetation', {
+            invoke('title_generation', {
                 key: bearerToken.value,
                 contexts: finalContexts,
-            }).then((res) => {
-                console.log('Title generated successfully:', res);
+            }).then(async (res) => {
+                // console.log('Title generated successfully:', res);
                 setTitle(res as string);
-                updateHistory(res as string);
-            }).catch((err) => {
-                alert(`An error occurs when generating title: ${err}`);
-            });
+                await updateHistory(userInput, res as string);
+                markdownRawLines.value = '';
+            })
+            // .catch((err) => {
+            //     alert(`An error occurs when generating title: ${err}`);
+            // });
         } else {
-            updateHistory();
+            await updateHistory(userInput);
+            markdownRawLines.value = '';
         }
     }).catch((err) => {
         alert(`An error occurs when sending message: ${err}`);
         currentCharacter.value = null;
         isSending.value = false;
+        markdownRawLines.value = '';
     });
 
 }
@@ -367,28 +414,28 @@ listen("completion-status", (event) => {
     currentCharacter.value = 'assistant';
 });
 
-listen("completion-chunk", (event) => {
-    // console.log('Chunk received:', event.payload || event, `${typeof (event.payload)}`);
+listen("completion-chunk", async (event) => {
+    // console.log('Chunk received:', event.payload.toRaw || event, `${typeof (event.payload)}`);
     const payload = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
+    markdownRawLines.value += payload;
     if (payload) {
         const msgContainer = document.getElementById('message-container');
         if (msgContainer) {
-            converter.append(`${payload}`);
-            const parsedElement = MdToHtml.getHtml(converter.lines);
+            // console.log(parsedElement);
             if (!aiResponseElement) {
                 aiResponseElement = document.createElement('div');
                 aiResponseElement.innerHTML = `
                     <div class="flex justify-start">
                         <div class="bg-blue-100 rounded-lg px-4 py-3 max-w-[70%]">
-                            <p class="msg msg-ai text-gray-800"></p>
+                            <div class="msg msg-ai text-gray-800 [&_*]:!select-text"></div>
                         </div>
                     </div>
                 `;
                 msgContainer.appendChild(aiResponseElement);
             } else {
-                const pElement = aiResponseElement.querySelector('p.msg-ai');
+                const pElement = aiResponseElement.querySelector('.msg-ai');
                 if (pElement) {
-                    pElement.innerHTML = parsedElement;
+                    pElement.innerHTML = await processMarkdown(markdownRawLines.value);
                 }
             }
         }
@@ -401,7 +448,6 @@ listen("completion-end", (event) => {
     currentCharacter.value = null;
     aiResponseElement = null;
     isSending.value = false;
-    converter = new MdToHtml();
 });
 
 listen("balance", (event) => {
@@ -410,16 +456,12 @@ listen("balance", (event) => {
     alert(`当前api-key可用性：${infos.available}\n当前剩余余额：${infos.balance} ${infos.currency}`);
 });
 
-// watch(globalSystemPrompt, (_, __) => {
-//     // console.log(globalSystemPrompt.value);
-//     console.log(userConfig.value);
-// });
 </script>
 
 <template>
     <div class="min-h-screen bg-gray-50 flex flex-col">
         <!-- 对话显示区域 - 自适应高度并留出底部空间 -->
-        <div class="flex-1 overflow-y-auto p-6 pb-32 space-y-4" style="scroll-padding-bottom: 1rem;">
+        <div class="flex-1 overflow-y-auto p-6 pb-26 space-y-4" style="scroll-padding-bottom: 1rem;">
             <!-- 空白区域，用于显示新消息 -->
             <div id="message-container" class="space-y-4">
             </div>
@@ -429,27 +471,13 @@ listen("balance", (event) => {
         <Transition name="mask" enter-active-class="transition ease-in-out duration-300" enter-from-class="opacity-0"
             enter-to-class="opacity-100" leave-active-class="transition ease-in-out duration-300"
             leave-from-class="opacity-100" leave-to-class="opacity-0">
-            <div
-                v-if="showHistory || showConfig" 
-                class="fixed inset-0 bg-black/40 z-40" 
-                @click="panelClose"
-            ></div>
+            <div v-if="showHistory || showConfig" class="fixed inset-0 bg-black/40 z-40" @click="panelClose"></div>
         </Transition>
-        <History 
-            :isVisible="showHistory" 
-            :historyItems="historyItems" 
-            @close="panelClose" 
-            @load="loadHistoryToApp" 
-            @new-conversation="createNewConversation" 
-        />
-        <UserConfig 
-            :isVisible="showConfig"
-            v-model:globalSystemPrompt="globalSystemPrompt"
-            v-model:userConfig="userConfig"
-            v-model:defaultSystemPrompt="defaultSystemPrompt"
-            v-model:isFirstMessageSent="isFirstMessageSent"
-            @close="panelClose"
-        />
+        <History :isVisible="showHistory" :historyItems="historyItems" @close="panelClose" @load="loadHistoryToApp"
+            @new-conversation="createNewConversation" />
+        <UserConfig :isVisible="showConfig" v-model:globalSystemPrompt="globalSystemPrompt"
+            v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt"
+            v-model:isFirstMessageSent="isFirstMessageSent" @close="panelClose" />
 
         <!-- Token 输入区域 - 可展开/收起 -->
         <div class="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 p-4 w-full z-10"
@@ -484,7 +512,7 @@ listen("balance", (event) => {
             <div class="absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
                 <!-- Token 切换按钮 -->
                 <button @click="isTokenVisible = !isTokenVisible"
-                    class="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center justify-center text-sm">
+                    class="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center justify-center text-sm whitespace-nowrap">
                     <span v-if="isTokenVisible">隐藏 Token</span>
                     <span v-else>显示 Token</span>
                 </button>
@@ -497,7 +525,7 @@ listen("balance", (event) => {
                 <div class="flex space-x-3">
                     <button @click="send_msg" :disabled="isSending"
                         :class="isSending ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
-                        class="text-white px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center">
+                        class="text-white px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center whitespace-nowrap">
                         <svg v-if="!isSending" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
@@ -510,8 +538,7 @@ listen("balance", (event) => {
             <!-- 右侧按钮容器，继承父级宽度 -->
             <div class="w-3/4 flex justify-end">
                 <!-- 用户配置 - 放置在输入区域内最右端 -->
-                <button
-                    @click="showConfig = true"
+                <button @click="showConfig = true"
                     class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                         stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -525,3 +552,69 @@ listen("balance", (event) => {
         </div>
     </div>
 </template>
+
+<style>
+@import 'katex/dist/katex.min.css';
+
+.msg-ai {
+    line-height: 1.6;
+}
+
+/* 基础 Markdown 样式 */
+.msg-ai h1 {
+    font-size: 1.6em;
+    font-weight: bold;
+    margin: 0.33em 0;
+}
+
+.msg-ai h2 {
+    font-size: 1.3em;
+    font-weight: bold;
+    margin: 0.33em 0;
+}
+
+.msg-ai p {
+    margin: 0.2em 0;
+}
+
+.msg-ai pre {
+    background-color: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow: auto;
+}
+
+.msg-ai code {
+    font-family: consolas;
+    background-color: rgba(175, 184, 193, 0.2);
+    padding: 0.2em 0.4em;
+    border-radius: 6px;
+}
+
+.msg-ai blockquote {
+    border-left: 4px solid #b4b5b5;
+    color: #6a737d;
+    padding: 0 1em;
+    margin: 0 0 1em 0;
+}
+
+.msg-ai table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.msg-ai th,
+.msg-ai td {
+    border: 1px solid #dfe2e5;
+    padding: 6px 13px;
+}
+
+.msg-ai tr {
+    background-color: #fff;
+    border-top: 1px solid #c6cbd1;
+}
+
+.msg-ai tr:nth-child(2n) {
+    background-color: #f6f8fa;
+}
+</style>

@@ -3,6 +3,7 @@ import type { ConfigItem } from '../data/types';
 
 interface Props {
     isVisible: boolean,
+    defaultSystemPrompt: string,
 }
 
 const props = defineProps<Props>();
@@ -11,7 +12,7 @@ const emit = defineEmits<{
     close: [];
 }>();
 
-const defaultSystemPrompt = defineModel<string>('defaultSystemPrompt');
+const defaultSystemPrompt = props.defaultSystemPrompt;
 const globalSystemPrompt = defineModel<string>('globalSystemPrompt');
 const config = defineModel<ConfigItem>('userConfig', {
     required: true,
