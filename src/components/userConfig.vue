@@ -56,7 +56,7 @@ defineExpose({
 </script>
 
 <template>
-    <Teleport to="body">
+    <Teleport to="#app">
         <Transition name="config-panel" enter-active-class="transition ease-in-out duration-300"
             enter-from-class="transform translate-x-full opacity-0" enter-to-class="transform translate-x-0 opacity-100"
             leave-active-class="transition ease-in-out duration-300"

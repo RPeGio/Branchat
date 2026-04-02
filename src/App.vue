@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeMount, ref, watch } from 'vue';
+import { onBeforeMount, ref, watch, nextTick } from 'vue';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
 import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer } from './data/types'
@@ -33,9 +33,9 @@ const tokenDisplayForm = ref<string>('password');
 const currentCharacter = ref<string | null>(null);
 const defaultSystemPrompt = '你是一个得力的助手';
 const globalSystemPrompt = ref<string>(`${defaultSystemPrompt}`);
-// const currentSystemPrompt = ref<string>('');
 const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发送
-// let converter = new MdToHtml();
+const scrollContainer = ref<HTMLDivElement | null>(null);
+const autoScroll = ref<boolean>(true);
 
 onBeforeMount(async () => {
     const store = await Store.load('store.json', {
@@ -66,6 +66,17 @@ const panelClose = async () => {
     } as GlobalUserConfig),
     showHistory.value = false;
     showConfig.value = false;
+};
+
+const handleScroll = (event: Event): void => {
+    const el = scrollContainer.value;
+    if (!el) return;
+    
+    const target = event.currentTarget as HTMLDivElement;
+    // console.log(target);
+    // console.log(target.scrollHeight, target.scrollTop, target.clientHeight);
+    const isAtBottom: boolean = target.scrollHeight - target.scrollTop - target.clientHeight < 50;
+    autoScroll.value = isAtBottom;
 };
 
 const loadHistoryToApp = async (item: HistoryItem) => {
@@ -212,7 +223,7 @@ async function updateHistory(userInput: string, title?: string) {
                 content: markdownRawLines.value,
             }
         ];
-        console.log(contexts);
+        // console.log(contexts);
         history.push({
             'id': historyLength,
             'title': title,
@@ -260,7 +271,7 @@ function createNewConversation() {
         topP: defaultUserConfig.topP,
         frequencyPenalty: defaultUserConfig.frequencyPenalty
     };
-    console.log(defaultUserConfig);
+    // console.log(defaultUserConfig);
     isFirstMessageSent.value = false;
     setTitle('分支式AIChat');
 }
@@ -306,6 +317,7 @@ async function send_msg() {
         emptyInput();
         return;
     }
+    markdownRawLines.value = '';
 
     const modelConfig = getModelConfig(userConfig.value);
     // console.log(modelConfig);
@@ -382,20 +394,17 @@ async function send_msg() {
                 // console.log('Title generated successfully:', res);
                 setTitle(res as string);
                 await updateHistory(userInput, res as string);
-                markdownRawLines.value = '';
             })
             // .catch((err) => {
             //     alert(`An error occurs when generating title: ${err}`);
             // });
         } else {
             await updateHistory(userInput);
-            markdownRawLines.value = '';
         }
     }).catch((err) => {
         alert(`An error occurs when sending message: ${err}`);
         currentCharacter.value = null;
         isSending.value = false;
-        markdownRawLines.value = '';
     });
 
 }
@@ -456,12 +465,20 @@ listen("balance", (event) => {
     alert(`当前api-key可用性：${infos.available}\n当前剩余余额：${infos.balance} ${infos.currency}`);
 });
 
+// 监听消息变化，自动滚动
+watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
+    if (autoScroll.value) {
+        await nextTick(); // 等待 DOM 更新完成
+        console.log('Auto-scrolling to bottom...');
+        const el = scrollContainer.value;
+        if (el) el.scrollTop = el.scrollHeight;
+    }
+}, { deep: true });
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-50 flex flex-col">
-        <!-- 对话显示区域 - 自适应高度并留出底部空间 -->
-        <div class="flex-1 overflow-y-auto p-6 pb-26 space-y-4" style="scroll-padding-bottom: 1rem;">
+    <div class="h-[calc(100vh-30px-80.67px)] bg-gray-50 flex flex-col">
+        <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-4" style="scroll-padding-bottom: 1rem;">
             <!-- 空白区域，用于显示新消息 -->
             <div id="message-container" class="space-y-4">
             </div>
@@ -571,6 +588,12 @@ listen("balance", (event) => {
     font-size: 1.3em;
     font-weight: bold;
     margin: 0.33em 0;
+}
+
+.msg-ai hr {
+    color: #393939;
+    height: 10px;
+    margin: 0.6em 0;
 }
 
 .msg-ai p {

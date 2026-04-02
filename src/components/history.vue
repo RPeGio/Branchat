@@ -31,14 +31,14 @@ const loadHistoryToApp = (item: HistoryItem) => {
 </script>
 
 <template>
-    <Teleport to="body">
+    <Teleport to="#app">
         <Transition name="history-panel" enter-active-class="transition ease-in-out duration-300"
             enter-from-class="transform -translate-x-full opacity-0"
             enter-to-class="transform translate-x-0 opacity-100"
             leave-active-class="transition ease-in-out duration-300"
             leave-from-class="transform translate-x-0 opacity-100"
             leave-to-class="transform -translate-x-full opacity-0">
-            <div class="fixed top-0 left-0 h-full w-2/5 bg-[#eefbff] shadow-xl z-50 p-6 overflow-y-auto pt-7.5 pb-7.5" v-if="props.isVisible" @click.stop>
+            <div class="fixed top-0 left-0 h-[calc(100vh-30px)] w-2/5 bg-[#eefbff] shadow-xl z-50 p-6 overflow-y-auto mt-7.5" v-if="props.isVisible" @click.stop>
                 <div class="flex justify-between items-center mb-6">
                     <h2 class="text-xl font-bold">历史对话记录</h2>
                     <div class="flex space-x-3">
