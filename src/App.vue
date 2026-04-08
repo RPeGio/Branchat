@@ -2,7 +2,7 @@
 import { onBeforeMount, ref, watch, nextTick } from 'vue';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
-import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer } from './data/types'
+import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem } from './data/types'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
@@ -36,6 +36,14 @@ const globalSystemPrompt = ref<string>(`${defaultSystemPrompt}`);
 const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发送
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const autoScroll = ref<boolean>(true);
+const isGivenOptions = ref<boolean>(false);
+const options = ref<OptionItem>({
+    raw: null,
+    positive: null,
+    positiveExtraInput: false,
+    negative: null,
+    negativeExtraInput: false,
+});
 
 onBeforeMount(async () => {
     const store = await Store.load('store.json', {
@@ -146,6 +154,24 @@ function getModelConfig(userConfig: ConfigItem): ModelParamsForServer {
     }
 }
 
+function extractOptions(raw: string | null): OptionItem | null {
+    if (!raw) return null;
+    const regex = /^\[(.*?),(true|false)\]\[(.*?),(true|false)\]$/;
+    const match = raw.match(regex);
+
+    if (match) {
+        return {
+            raw: raw,
+            positive: match[1].trim(),
+            positiveExtraInput: match[2] === 'true',
+            negative: match[3].trim(),
+            negativeExtraInput: match[4] === 'true',
+        }
+    }
+
+    return null;
+}
+
 function collectContexts(): ContextItem[] {
 
     const contexts: ContextItem[] = [
@@ -156,7 +182,7 @@ function collectContexts(): ContextItem[] {
             'role': 'system',
         },
         {
-            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, input=true||false（是否需要用户输入补充细节）][<反向选项>， input=true||false（是否需要用户输入补充细节）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
+            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
             'role': 'system',
         }
     ];
@@ -211,7 +237,7 @@ async function updateHistory(userInput: string, title?: string) {
                 'role': 'system',
             },
             {
-                'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, input=true||false（是否需要用户输入补充细节）][<反向选项>， input=true||false（是否需要用户输入补充细节）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
+                'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
                 'role': 'system',
             },
             {
@@ -441,6 +467,26 @@ listen("completion-chunk", async (event) => {
                     </div>
                 `;
                 msgContainer.appendChild(aiResponseElement);
+            } else if (aiResponseElement && (markdownRawLines.value.includes('@*@') || markdownRawLines.value.includes('@@@'))) {
+                const pElement = aiResponseElement.querySelector('.msg-ai');
+                if (markdownRawLines.value.includes('@*@')) {
+                    if (pElement) {
+                        if (isGivenOptions.value) {
+                            options.value.raw += payload.trim();
+                        } else {
+                            const cleanMarkdown = markdownRawLines.value.replace('@*@', '');
+                            pElement.innerHTML = await processMarkdown(cleanMarkdown);
+                            isGivenOptions.value = true;
+                            options.value.raw = '';
+                        }
+                    }
+                }
+                else if (markdownRawLines.value.includes('@@@')) {
+                    if (pElement) {
+                        const cleanMarkdown = markdownRawLines.value.replace('@@@', '');
+                        pElement.innerHTML = await processMarkdown(cleanMarkdown);
+                    }
+                }
             } else {
                 const pElement = aiResponseElement.querySelector('.msg-ai');
                 if (pElement) {
@@ -457,6 +503,11 @@ listen("completion-end", (event) => {
     currentCharacter.value = null;
     aiResponseElement = null;
     isSending.value = false;
+    const extractedOption = extractOptions(options.value.raw);
+    if (extractedOption) {
+        options.value = extractedOption;
+        console.log(options.value);
+    }
 });
 
 listen("balance", (event) => {
@@ -469,7 +520,7 @@ listen("balance", (event) => {
 watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
     if (autoScroll.value) {
         await nextTick(); // 等待 DOM 更新完成
-        console.log('Auto-scrolling to bottom...');
+        // console.log('Auto-scrolling to bottom...');
         const el = scrollContainer.value;
         if (el) el.scrollTop = el.scrollHeight;
     }

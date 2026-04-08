@@ -35,3 +35,11 @@ export interface ModelParamsForServer {
     top_p: number,
     frequency_penalty: number,
 }
+
+export interface OptionItem {
+    raw: string | null,
+    positive: string | null,
+    positiveExtraInput: boolean,
+    negative: string | null,
+    negativeExtraInput: boolean,
+}
