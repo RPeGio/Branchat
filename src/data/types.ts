@@ -15,6 +15,8 @@ export interface HistoryItem {
 export interface ContextItem {
     role: string,
     content: string,
+    option?: OptionItem,
+    selection?: 0 | 1,
 }
 
 export interface GlobalUserConfig {
