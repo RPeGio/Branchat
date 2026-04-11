@@ -2,6 +2,7 @@
 import { onBeforeMount, ref, watch, nextTick } from 'vue';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
+import OptionSelection from './components/OptionSelection.vue';
 import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem } from './data/types'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -156,20 +157,52 @@ function getModelConfig(userConfig: ConfigItem): ModelParamsForServer {
 
 function extractOptions(raw: string | null): OptionItem | null {
     if (!raw) return null;
-    const regex = /^\[(.*?),(true|false)\]\[(.*?),(true|false)\]$/;
+    console.log('原始选项数据:', raw);
+    const regex = /^\[(.*?)[,，](true|false)\]\[(.*?)[,，](true|false)\]$/;
     const match = raw.match(regex);
+    console.log('正则匹配结果:', match);
 
     if (match) {
-        return {
+        const result = {
             raw: raw,
             positive: match[1].trim(),
             positiveExtraInput: match[2] === 'true',
             negative: match[3].trim(),
             negativeExtraInput: match[4] === 'true',
-        }
+        };
+        console.log('解析后的选项:', result);
+        return result;
     }
 
     return null;
+}
+
+function handleOptionSelection(selectedOption: string) {
+    console.log('用户选择了:', selectedOption);
+    const inputElement = getInputElement();
+    if (inputElement) {
+        inputElement.value = selectedOption;
+        send_msg();
+    }
+    isGivenOptions.value = false;
+    options.value = {
+        raw: null,
+        positive: null,
+        positiveExtraInput: false,
+        negative: null,
+        negativeExtraInput: false,
+    };
+}
+
+function handleOptionClose() {
+    isGivenOptions.value = false;
+    options.value = {
+        raw: null,
+        positive: null,
+        positiveExtraInput: false,
+        negative: null,
+        negativeExtraInput: false,
+    };
 }
 
 function collectContexts(): ContextItem[] {
@@ -226,7 +259,7 @@ async function updateHistory(userInput: string, title?: string) {
     const history: HistoryItem[] = await store.get('history') || [];
     const historyLength = history.length;
     const currentHistoryIndex = history.findIndex(h => h.id === currentId.value);
-    const modelConfig = getModelConfig(userConfig.value);
+    const modelConfig = getModelConfig(userConfig.value); 
 
     if (title) {
         const contexts: ContextItem[] = [
@@ -237,7 +270,7 @@ async function updateHistory(userInput: string, title?: string) {
                 'role': 'system',
             },
             {
-                'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
+                'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字',
                 'role': 'system',
             },
             {
@@ -528,7 +561,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 </script>
 
 <template>
-    <div class="h-[calc(100vh-30px-80.67px)] bg-gray-50 flex flex-col">
+    <div class="h-[calc(100vh-30px-102px)] bg-gray-50 flex flex-col">
         <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-4" style="scroll-padding-bottom: 1rem;">
             <!-- 空白区域，用于显示新消息 -->
             <div id="message-container" class="space-y-4">
@@ -548,8 +581,8 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             v-model:isFirstMessageSent="isFirstMessageSent" @close="panelClose" />
 
         <!-- Token 输入区域 - 可展开/收起 -->
-        <div class="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 p-4 w-full z-10"
-            :class="{ 'opacity-0 h-0 p-0 overflow-hidden': !isTokenVisible, 'opacity-100 h-auto min-h-15 p-4': isTokenVisible }">
+        <div class="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 p-4 w-full z-10 opacity-100 h-auto min-h-15"
+            v-if="isTokenVisible">
             <div class="w-3/4 mx-auto flex flex-col items-center">
                 <div class="w-full flex items-center space-x-3">
                     <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Deepseek Bearer Token:</label>
@@ -561,8 +594,8 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
         </div>
 
         <!-- 输入区域 - 固定在底部 -->
-        <div
-            class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-between p-4 pb-6 pt-6 w-full">
+        <div v-show="!isGivenOptions"
+            class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-between p-4 pb-9 pt-9 w-full">
             <!-- 左侧按钮容器，继承父级宽度 -->
             <div class="w-3/4 flex space-x-3">
                 <!-- 对话历史 - 放置在输入区域内最左端 -->
@@ -618,6 +651,18 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </button>
             </div>
         </div>
+
+        <!-- 选项选择组件 - 固定在底部 -->
+        <OptionSelection 
+            v-if="isGivenOptions"
+            :raw="options.raw"
+            :positive="options.positive"
+            :positiveExtraInput="options.positiveExtraInput"
+            :negative="options.negative"
+            :negativeExtraInput="options.negativeExtraInput"
+            @select="handleOptionSelection"
+            @close="handleOptionClose"
+        />
     </div>
 </template>
 
