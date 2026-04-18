@@ -39,28 +39,28 @@ const handleNegativeSelect = () => {
                 @click="handlePositiveSelect"
                 class="whitespace-nowrap shrink-0 min-w-50 bg-[#328ef1] hover:bg-[#0479f6] text-white px-6 py-2 rounded-lg transition duration-200 flex items-center justify-center space-x-2"
             >
-                <span>{{ positive }}</span>
+                <span>{{ props.positive as string + (positiveExtraInput ? ': ' : '') }}</span>
                 <input 
                     v-if="positiveExtraInput"
                     v-model="positiveInputValue"
                     @click.stop
                     type="text"
                     placeholder="请输入..."
-                    class="w-32 px-2 py-1 border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
+                    class="w-32 px-2 py-0.5= border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
                 />
             </button>
             <button 
                 @click="handleNegativeSelect"
                 class="whitespace-nowrap shrink-0 min-w-50 bg-[#eb5bcc] hover:bg-[#ef29c4] text-white px-6 py-2 rounded-lg transition duration-200 flex items-center justify-center space-x-2"
             >
-                <span>{{ negative }}</span>
+                <span>{{ props.negative as string + (negativeExtraInput ? ': ' : '') }}</span>
                 <input 
                     v-if="negativeExtraInput"
                     v-model="negativeInputValue"
                     @click.stop
                     type="text"
                     placeholder="请输入..."
-                    class="w-32 px-2 py-1 border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
+                    class="w-32 px-2 py-0.5 border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
                 />
             </button>
             <button 

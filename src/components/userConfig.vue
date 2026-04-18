@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+
 import type { ConfigItem } from '../data/types';
 
 interface Props {
@@ -11,6 +13,9 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
     close: [];
 }>();
+
+const showGlobalTooltip = ref(false);
+const showCurrentTooltip = ref(false);
 
 const defaultSystemPrompt = props.defaultSystemPrompt;
 const globalSystemPrompt = defineModel<string>('globalSystemPrompt');
@@ -79,13 +84,22 @@ defineExpose({
 
                     <!-- 全局系统提示词 -->
                     <div class="mb-6">
-                        <div class="flex items-center mb-2">
+                        <div class="flex items-center mb-2 relative">
                             <label class="font-medium">全局系统提示词</label>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500"
-                                fill="none" viewBox="0 0 24 24" stroke="currentColor" title="全局系统提示适用于所有对话">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                            <div class="relative inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500"
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                    @mouseenter="showGlobalTooltip = true"
+                                    @mouseleave="showGlobalTooltip = false">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div v-if="showGlobalTooltip"
+                                    class="absolute left-0 bottom-6 z-50 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg shadow-lg max-w-50 min-w-37.5 w-fit transition-opacity duration-300 opacity-100 whitespace-normal transform translate-x-[-40%]"
+                                    style="border-radius: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+                                    新建对话时默认的提示词，若没有指定当前对话系统提示词则使用此提示词
+                                </div>
+                            </div>
                         </div>
                         <textarea v-model="globalSystemPrompt"
                             class="w-full h-32 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none bg-white focus:ring-2 focus:ring-blue-500 resize-none"
@@ -94,16 +108,25 @@ defineExpose({
 
                     <!-- 当前对话系统提示词 -->
                     <div>
-                        <div class="flex items-center mb-2">
+                        <div class="flex items-center mb-2 relative">
                             <label class="font-medium">当前对话系统提示词</label>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500"
-                                fill="none" viewBox="0 0 24 24" stroke="currentColor" title="当前对话系统提示仅适用于当前对话">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span v-if="isFirstMessageSent" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                                （当前对话已开始，不可再更改提示词）
-                            </span>
+                            <div class="relative inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500"
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                    @mouseenter="showCurrentTooltip = true"
+                                    @mouseleave="showCurrentTooltip = false">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div v-if="showCurrentTooltip"
+                                    class="absolute left-0 bottom-6 z-50 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg shadow-lg max-w-50 min-w-37.5 w-fit transition-opacity duration-300 opacity-100 whitespace-normal transform translate-x-[-40%]"
+                                    style="border-radius: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+                                    当前对话提示词，留空则使用全局提示词，若当前对话已开始，则无法再更改提示词
+                                </div>
+                                <span v-if="isFirstMessageSent" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                    （当前对话已开始，不可再更改提示词）
+                                </span>
+                            </div>
                         </div>
                         <textarea v-model="config.systemPrompt"
                             :disabled="isFirstMessageSent"

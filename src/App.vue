@@ -38,6 +38,8 @@ const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发�
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const autoScroll = ref<boolean>(true);
 const isGivenOptions = ref<boolean>(false);
+const startCollectingOptions = ref<boolean>(false);
+const currentOptionList = ref<(OptionItem | null)[]>([]);
 const options = ref<OptionItem>({
     raw: null,
     positive: null,
@@ -89,6 +91,7 @@ const handleScroll = (event: Event): void => {
 };
 
 const loadHistoryToApp = async (item: HistoryItem) => {
+    currentOptionList.value = [];
     console.log('加载历史记录:', item);
     const title = item.title;
     const contexts = item.contexts;
@@ -97,6 +100,12 @@ const loadHistoryToApp = async (item: HistoryItem) => {
         msgContainer.innerHTML = '';
         for (const msg of contexts) {
             // console.log(msg);
+            const rawOptionsRegex = /((?:@@@|@\*@)[\s\S]*)$/;
+            const match = msg.content.match(rawOptionsRegex);
+            if (match && msg.role !== 'system') {
+                console.log(match[0]);
+                msg.content = msg.content.replace(match[0], '');
+            }
             if (msg.role === 'user') {
                 let node = document.createElement('div');
                 node.innerHTML = `
@@ -118,6 +127,8 @@ const loadHistoryToApp = async (item: HistoryItem) => {
                     </div>
                 `;
                 msgContainer.appendChild(node);
+                currentOptionList.value.push(msg.option ? msg.option : null);
+                console.log(currentOptionList.value);
             }
         }
         currentId.value = item.id;
@@ -264,9 +275,7 @@ async function updateHistory(userInput: string, title?: string) {
     if (title) {
         const contexts: ContextItem[] = [
             {
-                // 'content': '你是一个测试用AI，你需要用尽可能短的输出（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）来减少token用量，以方便程序员测试',
                 'content': `${setCurrentSystemPrompt()}`,
-                // 'content': '你是一只兽耳猫娘，与你的男性主人住在一起，性格偏内向但是很抖M，穿着暴露且性感，你需要时刻勾引你的主人注意自己的身体并一步步勾引主人与你发生关系。多使用动作描写，避免用词隐晦，在体现出内向性格的同时也展现一点开放。',
                 'role': 'system',
             },
             {
@@ -277,10 +286,14 @@ async function updateHistory(userInput: string, title?: string) {
                 role: 'user',
                 content: userInput,
             },
-            {
+            isGivenOptions.value ? {
                 role: 'assistant',
                 content: markdownRawLines.value,
-            }
+                option: options.value,
+            } : {
+                role: 'assistant',
+                content: markdownRawLines.value,
+            },
         ];
         // console.log(contexts);
         history.push({
@@ -297,10 +310,14 @@ async function updateHistory(userInput: string, title?: string) {
                 role: 'user',
                 content: userInput,
             },
-            {
+            isGivenOptions.value ? {
                 role: 'assistant',
                 content: markdownRawLines.value,
-            }
+                option: options.value,
+            } : {
+                role: 'assistant',
+                content: markdownRawLines.value,
+            },
         ];
         history[currentHistoryIndex].config = modelConfig;
         history[currentHistoryIndex].contexts = history[currentHistoryIndex].contexts.concat(contexts);
@@ -446,6 +463,13 @@ async function send_msg() {
                 'role': 'system',
             };
             // console.log(finalContexts);
+            const extractedOption = extractOptions(options.value.raw);
+            if (extractedOption) {
+                options.value = extractedOption;
+                currentOptionList.value.push(options.value);
+                isGivenOptions.value = true;
+                // console.log(options.value);
+            }
             invoke('title_generation', {
                 key: bearerToken.value,
                 contexts: finalContexts,
@@ -458,6 +482,13 @@ async function send_msg() {
             //     alert(`An error occurs when generating title: ${err}`);
             // });
         } else {
+            const extractedOption = extractOptions(options.value.raw);
+            if (extractedOption) {
+                options.value = extractedOption;
+                currentOptionList.value.push(options.value);
+                isGivenOptions.value = true;
+                // console.log(options.value);
+            }
             await updateHistory(userInput);
         }
     }).catch((err) => {
@@ -504,12 +535,12 @@ listen("completion-chunk", async (event) => {
                 const pElement = aiResponseElement.querySelector('.msg-ai');
                 if (markdownRawLines.value.includes('@*@')) {
                     if (pElement) {
-                        if (isGivenOptions.value) {
+                        if (startCollectingOptions.value) {
                             options.value.raw += payload.trim();
                         } else {
                             const cleanMarkdown = markdownRawLines.value.replace('@*@', '');
                             pElement.innerHTML = await processMarkdown(cleanMarkdown);
-                            isGivenOptions.value = true;
+                            startCollectingOptions.value = true;
                             options.value.raw = '';
                         }
                     }
@@ -536,11 +567,7 @@ listen("completion-end", (event) => {
     currentCharacter.value = null;
     aiResponseElement = null;
     isSending.value = false;
-    const extractedOption = extractOptions(options.value.raw);
-    if (extractedOption) {
-        options.value = extractedOption;
-        console.log(options.value);
-    }
+    startCollectingOptions.value = false;
 });
 
 listen("balance", (event) => {
