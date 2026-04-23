@@ -563,7 +563,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
         const el = scrollContainer.value;
         if (el) el.scrollTop = el.scrollHeight;
     }
-}, { deep: true });
+});
 </script>
 
 <template>

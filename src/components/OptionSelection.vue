@@ -31,8 +31,8 @@ const handleNegativeSelect = () => {
 
 <template>
     <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex flex-col items-center justify-center p-4 pb-4 pt-3.5 w-full">
-        <div class="text-center mb-2 text-gray-700 font-medium">
-            <em>AI为你提供了选项，请单击选择：</em>
+        <div class="text-center mb-2 text-gray-500 font-medium">
+            <em>AI为你提供了选项，请单击选择：/&nbsp;<span @click="emits('close')" class="underline hover:text-gray-700">我不想使用AI给我提供的选项</span></em>
         </div>
         <div class="flex space-x-4">
             <button 
@@ -63,12 +63,12 @@ const handleNegativeSelect = () => {
                     class="w-32 px-2 py-0.5 border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
                 />
             </button>
-            <button 
+            <!-- <button>
                 @click="emits('close')"
                 class="whitespace-nowrap shrink-0 min-w-50 bg-gray-400 hover:bg-gray-500 text-white px-6 py-2 rounded-lg transition duration-200 flex items-center justify-center space-x-2"
             >
                 <span class="underline">我不想使用AI给我提供的选项</span>
-            </button>
+            </button> -->
         </div>
     </div>
 </template>
