@@ -13,7 +13,7 @@ export interface HistoryItem {
 }
 
 export interface ContextItem {
-    role: string,
+    role: 'user' | 'assistant' | 'system',
     content: string,
     option?: OptionItem,
     selection?: 0 | 1,
@@ -44,4 +44,13 @@ export interface OptionItem {
     positiveExtraInput: boolean,
     negative: string | null,
     negativeExtraInput: boolean,
+}
+
+export interface MessageItem {
+    id: number,
+    role: 'user' | 'assistant' | 'system',
+    content: string,
+    htmlContent?: string,
+    option?: OptionItem,
+    selection?: 0 | 1,
 }

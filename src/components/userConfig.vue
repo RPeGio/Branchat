@@ -110,8 +110,8 @@ defineExpose({
                     <div>
                         <div class="flex items-center mb-2 relative">
                             <label class="font-medium">当前对话系统提示词</label>
-                            <div class="relative inline-block">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500"
+                            <div class="relative inline-flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500 shrink-0"
                                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                     @mouseenter="showCurrentTooltip = true"
                                     @mouseleave="showCurrentTooltip = false">
@@ -123,7 +123,7 @@ defineExpose({
                                     style="border-radius: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
                                     当前对话提示词，留空则使用全局提示词，若当前对话已开始，则无法再更改提示词
                                 </div>
-                                <span v-if="isFirstMessageSent" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                <span v-if="isFirstMessageSent" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
                                     （当前对话已开始，不可再更改提示词）
                                 </span>
                             </div>

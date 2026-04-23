@@ -3,7 +3,7 @@ import { onBeforeMount, ref, watch, nextTick } from 'vue';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
 import OptionSelection from './components/OptionSelection.vue';
-import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem } from './data/types'
+import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem, MessageItem } from './data/types'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
@@ -47,6 +47,8 @@ const options = ref<OptionItem>({
     negative: null,
     negativeExtraInput: false,
 });
+const messages = ref<MessageItem[]>([]);
+let messageIdCounter = 0;
 
 onBeforeMount(async () => {
     const store = await Store.load('store.json', {
@@ -92,47 +94,39 @@ const handleScroll = (event: Event): void => {
 
 const loadHistoryToApp = async (item: HistoryItem) => {
     currentOptionList.value = [];
+    messages.value = [];
     console.log('加载历史记录:', item);
     const title = item.title;
     const contexts = item.contexts;
-    const msgContainer = document.getElementById("message-container") as HTMLElement;
-    if (msgContainer) {
-        msgContainer.innerHTML = '';
-        for (const msg of contexts) {
-            // console.log(msg);
-            const rawOptionsRegex = /((?:@@@|@\*@)[\s\S]*)$/;
-            const match = msg.content.match(rawOptionsRegex);
-            if (match && msg.role !== 'system') {
-                console.log(match[0]);
-                msg.content = msg.content.replace(match[0], '');
-            }
-            if (msg.role === 'user') {
-                let node = document.createElement('div');
-                node.innerHTML = `
-                    <div class="flex justify-end">
-                        <div class="bg-green-400 text-gray-800 rounded-lg px-4 py-3 max-w-[70%]">
-                            <div class="msg msg-user text-gray-800 !select-text">${msg.content}</div>
-                        </div>
-                    </div>
-                `;
-                msgContainer.appendChild(node);
-            } else if (msg.role === 'assistant') {
-                const parsedElement = await processMarkdown(msg.content);
-                let node = document.createElement('div');
-                node.innerHTML = `
-                    <div class="flex justify-start">
-                        <div class="bg-blue-100 rounded-lg px-4 py-3 max-w-[70%]">
-                            <div class="msg msg-ai text-gray-800 [&_*]:!select-text">${parsedElement}</div>
-                        </div>
-                    </div>
-                `;
-                msgContainer.appendChild(node);
-                currentOptionList.value.push(msg.option ? msg.option : null);
-                console.log(currentOptionList.value);
-            }
+    
+    for (const msg of contexts) {
+        const rawOptionsRegex = /((?:@@@|@\*@)[\s\S]*)$/;
+        const match = msg.content.match(rawOptionsRegex);
+        let cleanContent = msg.content;
+        if (match && msg.role !== 'system') {
+            console.log(match[0]);
+            cleanContent = msg.content.replace(match[0], '');
         }
-        currentId.value = item.id;
+        
+        if (msg.role === 'user' || msg.role === 'assistant') {
+            const message: MessageItem = {
+                id: messageIdCounter++,
+                role: msg.role,
+                content: cleanContent,
+                option: msg.option,
+                selection: msg.selection
+            };
+            
+            if (msg.role === 'assistant') {
+                message.htmlContent = await processMarkdown(cleanContent);
+                currentOptionList.value.push(msg.option ? msg.option : null);
+            }
+            
+            messages.value.push(message);
+        }
     }
+    
+    currentId.value = item.id;
     if (title) {
         const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
         titleElement.innerText = title;
@@ -168,10 +162,10 @@ function getModelConfig(userConfig: ConfigItem): ModelParamsForServer {
 
 function extractOptions(raw: string | null): OptionItem | null {
     if (!raw) return null;
-    console.log('原始选项数据:', raw);
+    // console.log('原始选项数据:', raw);
     const regex = /^\[(.*?)[,，](true|false)\]\[(.*?)[,，](true|false)\]$/;
     const match = raw.match(regex);
-    console.log('正则匹配结果:', match);
+    // console.log('正则匹配结果:', match);
 
     if (match) {
         const result = {
@@ -181,7 +175,7 @@ function extractOptions(raw: string | null): OptionItem | null {
             negative: match[3].trim(),
             negativeExtraInput: match[4] === 'true',
         };
-        console.log('解析后的选项:', result);
+        // console.log('解析后的选项:', result);
         return result;
     }
 
@@ -190,11 +184,10 @@ function extractOptions(raw: string | null): OptionItem | null {
 
 function handleOptionSelection(selectedOption: string) {
     console.log('用户选择了:', selectedOption);
-    const inputElement = getInputElement();
-    if (inputElement) {
-        inputElement.value = selectedOption;
-        send_msg();
-    }
+    
+    // 直接发送消息，不需要通过输入框
+    sendOptionMessage(selectedOption);
+    
     isGivenOptions.value = false;
     options.value = {
         raw: null,
@@ -203,6 +196,79 @@ function handleOptionSelection(selectedOption: string) {
         negative: null,
         negativeExtraInput: false,
     };
+}
+
+async function sendOptionMessage(optionText: string) {
+    if (isSending.value) return;
+    
+    // 添加用户选择的选项消息到响应式列表
+    const optionMessage: MessageItem = {
+        id: messageIdCounter++,
+        role: 'user',
+        content: optionText
+    };
+    messages.value.push(optionMessage);
+    
+    // 发送消息到AI
+    await sendMessageToAI(optionText);
+}
+
+async function sendMessageToAI(userInput: string) {
+    markdownRawLines.value = '';
+    const modelConfig = getModelConfig(userConfig.value);
+    const contexts = collectContexts();
+    
+    contexts.push({
+        'content': `${userInput}`,
+        'role': `user`,
+    });
+    
+    currentCharacter.value = 'user';
+    isSending.value = true;
+    
+    await invoke('stream_chat', {
+        key: bearerToken.value,
+        contexts: contexts,
+        modelConfig: modelConfig,
+    }).then(async () => {
+        // 处理AI响应后的逻辑（与send_msg函数中的相同）
+        const finalContexts = collectContexts();
+        
+        if (finalContexts && finalContexts.length == 4) {
+            finalContexts.shift();
+            finalContexts[0] = {
+                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
+                'role': 'system',
+            };
+            
+            const extractedOption = extractOptions(options.value.raw);
+            if (extractedOption) {
+                options.value = extractedOption;
+                currentOptionList.value.push(options.value);
+                isGivenOptions.value = true;
+            }
+            
+            invoke('title_generation', {
+                key: bearerToken.value,
+                contexts: finalContexts,
+            }).then(async (res) => {
+                setTitle(res as string);
+                await updateHistory(res as string);
+            })
+        } else {
+            const extractedOption = extractOptions(options.value.raw);
+            if (extractedOption) {
+                options.value = extractedOption;
+                currentOptionList.value.push(options.value);
+                isGivenOptions.value = true;
+            }
+            await updateHistory();
+        }
+    }).catch((err) => {
+        alert(`An error occurs when sending message: ${err}`);
+        currentCharacter.value = null;
+        isSending.value = false;
+    });
 }
 
 function handleOptionClose() {
@@ -220,25 +286,24 @@ function collectContexts(): ContextItem[] {
 
     const contexts: ContextItem[] = [
         {
-            // 'content': '你是一个测试用AI，你需要用尽可能短的输出（markdown仅可使用粗体，斜体，代码块，header，其余均严厉禁止使用）来减少token用量，以方便程序员测试',
             'content': `${setCurrentSystemPrompt()}`,
-            // 'content': '你是一只兽耳猫娘，与你的男性主人住在一起，性格偏内向但是很抖M，穿着暴露且性感，你需要时刻勾引你的主人注意自己的身体并一步步勾引主人与你发生关系。多使用动作描写，避免用词隐晦，在体现出内向性格的同时也展现一点开放。',
             'role': 'system',
         },
         {
-            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
+            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"@*@"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"；如果你认为不需要，则在一个chunk内输出"@@@"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
             'role': 'system',
         }
     ];
 
-    const msgElements = document.querySelectorAll<HTMLElement>(".msg");
-    // console.log(msgElements);
-    msgElements.forEach((element) => {
-        const role = element.classList.contains('msg-ai') ? 'assistant' : 'user';
-        contexts.push({
-            'content': `${element.innerText}`,
-            'role': `${role}`,
-        });
+    messages.value.forEach((msg) => {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+            contexts.push({
+                'content': msg.content,
+                'role': msg.role,
+                option: msg.option,
+                selection: msg.selection
+            });
+        }
     });
     return contexts;
 }
@@ -249,7 +314,7 @@ function getInputElement(): HTMLInputElement {
 
 function textareaEnter(event: KeyboardEvent) {
     if (event.key === 'Enter' && !isSending.value) {
-        send_msg();
+        sendMsg();
     }
 }
 
@@ -265,37 +330,38 @@ function formatDate(date: Date): string {
     return `${year}-${month}-${day}`;
 }
 
-async function updateHistory(userInput: string, title?: string) {
+async function updateHistory(title?: string) {
     const store = await Store.load('store.json');
     const history: HistoryItem[] = await store.get('history') || [];
     const historyLength = history.length;
     const currentHistoryIndex = history.findIndex(h => h.id === currentId.value);
     const modelConfig = getModelConfig(userConfig.value); 
 
+    // 从响应式消息列表构建contexts
+    const contexts: ContextItem[] = [
+        {
+            'content': `${setCurrentSystemPrompt()}`,
+            'role': 'system',
+        },
+        {
+            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"@*@"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"；如果你认为不需要，则在一个chunk内输出"@@@"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字',
+            'role': 'system',
+        }
+    ];
+
+    // 添加所有用户和AI消息
+    messages.value.forEach(msg => {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+            contexts.push({
+                role: msg.role,
+                content: msg.content,
+                option: msg.option,
+                selection: msg.selection
+            });
+        }
+    });
+
     if (title) {
-        const contexts: ContextItem[] = [
-            {
-                'content': `${setCurrentSystemPrompt()}`,
-                'role': 'system',
-            },
-            {
-                'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出“@*@”，然后换行，输出“[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]”；如果你认为不需要，则在一个chunk内输出“@@@”。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字',
-                'role': 'system',
-            },
-            {
-                role: 'user',
-                content: userInput,
-            },
-            isGivenOptions.value ? {
-                role: 'assistant',
-                content: markdownRawLines.value,
-                option: options.value,
-            } : {
-                role: 'assistant',
-                content: markdownRawLines.value,
-            },
-        ];
-        // console.log(contexts);
         history.push({
             'id': historyLength,
             'title': title,
@@ -305,25 +371,10 @@ async function updateHistory(userInput: string, title?: string) {
         });
         currentId.value = historyLength;
     } else {
-        const contexts: ContextItem[] = [
-            {
-                role: 'user',
-                content: userInput,
-            },
-            isGivenOptions.value ? {
-                role: 'assistant',
-                content: markdownRawLines.value,
-                option: options.value,
-            } : {
-                role: 'assistant',
-                content: markdownRawLines.value,
-            },
-        ];
         history[currentHistoryIndex].config = modelConfig;
-        history[currentHistoryIndex].contexts = history[currentHistoryIndex].contexts.concat(contexts);
+        history[currentHistoryIndex].contexts = contexts;
     }
     await store.set('history', history);
-    // console.log(history);
 }
 
 async function clearHistory() {
@@ -338,8 +389,7 @@ async function loadHistoryItems() {
 }
 
 function createNewConversation() {
-    const msgContainer = document.getElementById("message-container");
-    if (msgContainer) msgContainer.innerHTML = '';
+    messages.value = [];
     userConfig.value = {
         systemPrompt: defaultUserConfig.systemPrompt,
         temperature: defaultUserConfig.temperature,
@@ -347,7 +397,6 @@ function createNewConversation() {
         topP: defaultUserConfig.topP,
         frequencyPenalty: defaultUserConfig.frequencyPenalty
     };
-    // console.log(defaultUserConfig);
     isFirstMessageSent.value = false;
     setTitle('分支式AIChat');
 }
@@ -357,11 +406,13 @@ function setTitle(title: string) {
     titleElement.innerText = title;
 }
 
-async function send_msg() {
+async function sendMsg() {
     if (isSending.value) return;
     const inputElement = getInputElement();
     const userInput = inputElement?.value || null;
     if (!userInput) return;
+    
+    // 处理命令
     if (userInput == '/displayToken') {
         tokenDisplayForm.value = "text";
         emptyInput();
@@ -393,110 +444,28 @@ async function send_msg() {
         emptyInput();
         return;
     }
-    markdownRawLines.value = '';
-
-    const modelConfig = getModelConfig(userConfig.value);
-    // console.log(modelConfig);
-
-    const contexts = collectContexts();
-
-    contexts.push({
-        'content': `${userInput}`,
-        'role': `user`,
-    });
-
-    currentCharacter.value = 'user';
+    
+    // 清空输入框
     inputElement.value = '';
-
-    const msgContainer = document.getElementById("message-container");
-    if (msgContainer) {
-        let node = document.createElement('div');
-        node.innerHTML = `
-            <div class="flex justify-end">
-                <div class="bg-green-400 text-gray-800 rounded-lg px-4 py-3 max-w-[70%]">
-                    <div class="msg msg-user text-gray-800 !select-text">${userInput}</div>
-                </div>
-            </div>
-        `;
-        msgContainer.appendChild(node);
+    
+    // 添加用户消息到响应式列表
+    const userMessage: MessageItem = {
+        id: messageIdCounter++,
+        role: 'user',
+        content: userInput
+    };
+    messages.value.push(userMessage);
+    
+    // 首次成功发送消息，触发系统提示词同步
+    if (!isFirstMessageSent.value) {
+        isFirstMessageSent.value = true;
+        if (userConfig.value && (!userConfig.value.systemPrompt || userConfig.value.systemPrompt.trim() === '')) {
+            userConfig.value.systemPrompt = globalSystemPrompt.value;
+        }
     }
-
-    // console.log(contexts);
-
-    isSending.value = true;
-
-    await invoke('stream_chat', {
-        key: bearerToken.value,
-        contexts: contexts,
-        modelConfig: modelConfig,
-        // 尽管后端标注的变量名是model_config，但是Tauri的命令系统会自动处理命名转换，这里必须用小驼峰
-        // 到底有多屎
-    }).then(async () => {
-        // 首次成功发送消息，触发系统提示词同步
-        if (!isFirstMessageSent.value) {
-            isFirstMessageSent.value = true;
-
-            // 检查是否需要同步系统提示词
-            if (userConfig.value && (!userConfig.value.systemPrompt || userConfig.value.systemPrompt.trim() === '')) {
-                // 同步全局系统提示词到当前对话
-                userConfig.value.systemPrompt = globalSystemPrompt.value;
-                // console.log('首次发送消息成功，已同步全局系统提示词到当前对话');
-            }
-        }
-
-        const finalContexts = collectContexts();
-        
-        if (finalContexts && finalContexts.length == 4) {
-            // console.log('collectContexts returned:', finalContexts);
-            // console.log('Array length:', finalContexts?.length);
-            // if (finalContexts) {
-            //     finalContexts.forEach((ctx, index) => {
-            //         console.log(`Context[${index}]:`, {
-            //             role: ctx.role,
-            //             content: ctx.content.substring(0, 50) + (ctx.content.length > 50 ? '...' : '')
-            //         });
-            //     });
-            // }
-            finalContexts.shift();
-            finalContexts[0] = {
-                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
-                'role': 'system',
-            };
-            // console.log(finalContexts);
-            const extractedOption = extractOptions(options.value.raw);
-            if (extractedOption) {
-                options.value = extractedOption;
-                currentOptionList.value.push(options.value);
-                isGivenOptions.value = true;
-                // console.log(options.value);
-            }
-            invoke('title_generation', {
-                key: bearerToken.value,
-                contexts: finalContexts,
-            }).then(async (res) => {
-                // console.log('Title generated successfully:', res);
-                setTitle(res as string);
-                await updateHistory(userInput, res as string);
-            })
-            // .catch((err) => {
-            //     alert(`An error occurs when generating title: ${err}`);
-            // });
-        } else {
-            const extractedOption = extractOptions(options.value.raw);
-            if (extractedOption) {
-                options.value = extractedOption;
-                currentOptionList.value.push(options.value);
-                isGivenOptions.value = true;
-                // console.log(options.value);
-            }
-            await updateHistory(userInput);
-        }
-    }).catch((err) => {
-        alert(`An error occurs when sending message: ${err}`);
-        currentCharacter.value = null;
-        isSending.value = false;
-    });
-
+    
+    // 发送消息到AI
+    await sendMessageToAI(userInput);
 }
 
 watch(bearerToken, async (newToken, oldToken) => {
@@ -506,7 +475,7 @@ watch(bearerToken, async (newToken, oldToken) => {
     }
 });
 
-let aiResponseElement: HTMLElement | null = null;
+
 
 listen("completion-status", (event) => {
     console.log('Completion status:', event.payload || event);
@@ -514,60 +483,70 @@ listen("completion-status", (event) => {
 });
 
 listen("completion-chunk", async (event) => {
-    // console.log('Chunk received:', event.payload.toRaw || event, `${typeof (event.payload)}`);
     const payload = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
     markdownRawLines.value += payload;
+    
     if (payload) {
-        const msgContainer = document.getElementById('message-container');
-        if (msgContainer) {
-            // console.log(parsedElement);
-            if (!aiResponseElement) {
-                aiResponseElement = document.createElement('div');
-                aiResponseElement.innerHTML = `
-                    <div class="flex justify-start">
-                        <div class="bg-blue-100 rounded-lg px-4 py-3 max-w-[70%]">
-                            <div class="msg msg-ai text-gray-800 [&_*]:!select-text"></div>
-                        </div>
-                    </div>
-                `;
-                msgContainer.appendChild(aiResponseElement);
-            } else if (aiResponseElement && (markdownRawLines.value.includes('@*@') || markdownRawLines.value.includes('@@@'))) {
-                const pElement = aiResponseElement.querySelector('.msg-ai');
+        // 检查是否是新的AI消息
+        if (currentCharacter.value === 'assistant' && messages.value.length > 0 && messages.value[messages.value.length - 1].role !== 'assistant') {
+            // 创建新的AI消息
+            const aiMessage: MessageItem = {
+                id: messageIdCounter++,
+                role: 'assistant',
+                content: markdownRawLines.value
+            };
+            messages.value.push(aiMessage);
+        } else if (messages.value.length > 0 && messages.value[messages.value.length - 1].role === 'assistant') {
+            // 更新最后一条AI消息
+            const lastMessage = messages.value[messages.value.length - 1];
+            lastMessage.content = markdownRawLines.value;
+            
+            // 检查是否需要处理选项
+            if (markdownRawLines.value.includes('@*@') || markdownRawLines.value.includes('@@@')) {
                 if (markdownRawLines.value.includes('@*@')) {
-                    if (pElement) {
-                        if (startCollectingOptions.value) {
-                            options.value.raw += payload.trim();
-                        } else {
-                            const cleanMarkdown = markdownRawLines.value.replace('@*@', '');
-                            pElement.innerHTML = await processMarkdown(cleanMarkdown);
-                            startCollectingOptions.value = true;
-                            options.value.raw = '';
-                        }
+                    if (startCollectingOptions.value) {
+                        options.value.raw += payload.trim();
+                        lastMessage.content = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf('@*@'));
+                        lastMessage.htmlContent = await processMarkdown(lastMessage.content);
+                    } else {
+                        const cleanMarkdown = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf('@*@'));
+                        lastMessage.content = cleanMarkdown;
+                        lastMessage.htmlContent = await processMarkdown(cleanMarkdown);
+                        startCollectingOptions.value = true;
+                        options.value.raw = '';
                     }
-                }
-                else if (markdownRawLines.value.includes('@@@')) {
-                    if (pElement) {
-                        const cleanMarkdown = markdownRawLines.value.replace('@@@', '');
-                        pElement.innerHTML = await processMarkdown(cleanMarkdown);
-                    }
+                } else if (markdownRawLines.value.includes('@@@')) {
+                    const cleanMarkdown = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf('@@@'));
+                    lastMessage.content = cleanMarkdown;
+                    lastMessage.htmlContent = await processMarkdown(cleanMarkdown);
                 }
             } else {
-                const pElement = aiResponseElement.querySelector('.msg-ai');
-                if (pElement) {
-                    pElement.innerHTML = await processMarkdown(markdownRawLines.value);
-                }
+                lastMessage.htmlContent = await processMarkdown(markdownRawLines.value);
             }
         }
-
     }
 });
 
-listen("completion-end", (event) => {
+listen("completion-end", async (event) => {
     console.log('Completion end:', event.payload || event);
     currentCharacter.value = null;
-    aiResponseElement = null;
     isSending.value = false;
     startCollectingOptions.value = false;
+    
+    // 确保最后一条AI消息的HTML内容已更新
+    if (messages.value.length > 0 && messages.value[messages.value.length - 1].role === 'assistant') {
+        const lastMessage = messages.value[messages.value.length - 1];
+        let cleanContent = lastMessage.content;
+        const atStarIdx = cleanContent.indexOf('@*@');
+        const atAtIdx = cleanContent.indexOf('@@@');
+        if (atStarIdx !== -1) {
+            cleanContent = cleanContent.substring(0, atStarIdx);
+        } else if (atAtIdx !== -1) {
+            cleanContent = cleanContent.substring(0, atAtIdx);
+        }
+        lastMessage.content = cleanContent;
+        lastMessage.htmlContent = await processMarkdown(cleanContent);
+    }
 });
 
 listen("balance", (event) => {
@@ -590,8 +569,21 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 <template>
     <div class="h-[calc(100vh-30px-102px)] bg-gray-50 flex flex-col">
         <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-4" style="scroll-padding-bottom: 1rem;">
-            <!-- 空白区域，用于显示新消息 -->
-            <div id="message-container" class="space-y-4">
+            <!-- 使用v-for渲染消息列表 -->
+            <div v-for="message in messages" :key="message.id" class="space-y-4">
+                <!-- 用户消息 -->
+                <div v-if="message.role === 'user'" class="flex justify-end">
+                    <div class="bg-green-400 text-gray-800 rounded-lg px-4 py-3 max-w-[70%]">
+                        <div class="msg msg-user text-gray-800 select-text!">{{ message.content }}</div>
+                    </div>
+                </div>
+                
+                <!-- AI消息 -->
+                <div v-else-if="message.role === 'assistant'" class="flex justify-start">
+                    <div class="bg-blue-100 rounded-lg px-4 py-3 max-w-[70%]">
+                        <div class="msg msg-ai text-gray-800 **:select-text!" v-html="message.htmlContent || message.content"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -622,7 +614,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 
         <!-- 输入区域 - 固定在底部 -->
         <div v-show="!isGivenOptions"
-            class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-between p-4 pb-9 pt-9 w-full">
+            class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-between p-4 pb-8.5 pt-9 w-full">
             <!-- 左侧按钮容器，继承父级宽度 -->
             <div class="w-3/4 flex space-x-3">
                 <!-- 对话历史 - 放置在输入区域内最左端 -->
@@ -651,7 +643,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 
                 <!-- 发送按钮和角色按钮 - 放在右侧 -->
                 <div class="flex space-x-3">
-                    <button @click="send_msg" :disabled="isSending"
+                    <button @click="sendMsg" :disabled="isSending"
                         :class="isSending ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
                         class="text-white px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center whitespace-nowrap">
                         <svg v-if="!isSending" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
