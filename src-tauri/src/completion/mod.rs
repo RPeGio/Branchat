@@ -98,6 +98,7 @@ pub async fn stream_chat(
                     })
                 }).collect::<Vec<_>>(),
             "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
             "stream": true,
             "max_tokens": model_config.max_tokens,
             "temperature": model_config.temperature,
