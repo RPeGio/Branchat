@@ -567,21 +567,21 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 </script>
 
 <template>
-    <div class="h-[calc(100vh-30px-102px)] bg-gray-50 flex flex-col">
-        <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-4" style="scroll-padding-bottom: 1rem;">
+    <div class="h-[calc(100vh-32px-102px)] bg-slate-50 flex flex-col">
+        <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-5" style="scroll-padding-bottom: 1rem;">
             <!-- 使用v-for渲染消息列表 -->
             <div v-for="message in messages" :key="message.id" class="space-y-4">
                 <!-- 用户消息 -->
                 <div v-if="message.role === 'user'" class="flex justify-end">
-                    <div class="bg-green-400 text-gray-800 rounded-lg px-4 py-3 max-w-[70%]">
-                        <div class="msg msg-user text-gray-800 select-text!">{{ message.content }}</div>
+                    <div class="bg-indigo-600 text-white rounded-2xl rounded-br-md px-5 py-3 max-w-[70%] shadow-sm">
+                        <div class="msg msg-user text-white select-text!">{{ message.content }}</div>
                     </div>
                 </div>
                 
                 <!-- AI消息 -->
                 <div v-else-if="message.role === 'assistant'" class="flex justify-start">
-                    <div class="bg-blue-100 rounded-lg px-4 py-3 max-w-[70%]">
-                        <div class="msg msg-ai text-gray-800 **:select-text!" v-html="message.htmlContent || message.content"></div>
+                    <div class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-5 py-3 max-w-[70%] shadow-sm">
+                        <div class="msg msg-ai text-slate-700 **:select-text!" v-html="message.htmlContent || message.content"></div>
                     </div>
                 </div>
             </div>
@@ -600,13 +600,13 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             v-model:isFirstMessageSent="isFirstMessageSent" @close="panelClose" />
 
         <!-- Token 输入区域 - 可展开/收起 -->
-        <div class="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 p-4 w-full z-10 opacity-100 h-auto min-h-15"
+        <div class="fixed bottom-25 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200 p-4 w-full z-10 opacity-100 h-auto min-h-15 shadow-md"
             v-if="isTokenVisible">
             <div class="w-3/4 mx-auto flex flex-col items-center">
                 <div class="w-full flex items-center space-x-3">
-                    <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Deepseek Bearer Token:</label>
+                    <label class="text-sm font-medium text-slate-600 whitespace-nowrap">Deepseek Bearer Token:</label>
                     <input :type="tokenDisplayForm" v-model="bearerToken"
-                        class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm"
+                        class="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 text-sm bg-slate-50"
                         placeholder="输入您的 API Token" />
                 </div>
             </div>
@@ -614,38 +614,34 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 
         <!-- 输入区域 - 固定在底部 -->
         <div v-show="!isGivenOptions"
-            class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-between p-4 pb-8.5 pt-9 w-full">
-            <!-- 左侧按钮容器，继承父级宽度 -->
+            class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+            <!-- 左侧按钮容器 -->
             <div class="w-3/4 flex space-x-3">
-                <!-- 对话历史 - 放置在输入区域内最左端 -->
                 <button @click="showHistory = true, loadHistoryItems()"
-                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                        stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:stroke-indigo-500 transition-colors">
                         <circle cx="12" cy="12" r="10"></circle>
                         <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
                 </button>
             </div>
 
-            <!-- 中间输入框和发送按钮，居中并浮动在上方 -->
+            <!-- 中间输入框和发送按钮 -->
             <div class="absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
-                <!-- Token 切换按钮 -->
                 <button @click="isTokenVisible = !isTokenVisible"
-                    class="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center justify-center text-sm whitespace-nowrap">
+                    class="bg-slate-100 text-slate-600 px-4 py-3 rounded-xl hover:bg-slate-200 hover:text-slate-700 transition-all duration-200 flex items-center justify-center text-sm whitespace-nowrap font-medium shadow-sm">
                     <span v-if="isTokenVisible">隐藏 Token</span>
                     <span v-else>显示 Token</span>
                 </button>
 
-                <!-- 输入框 -->
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
-                    class="w-lg px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
+                    class="w-lg px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 bg-slate-50 placeholder-slate-400" />
 
-                <!-- 发送按钮和角色按钮 - 放在右侧 -->
                 <div class="flex space-x-3">
                     <button @click="sendMsg" :disabled="isSending"
-                        :class="isSending ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
-                        class="text-white px-6 py-3 rounded-lg transition duration-200 flex items-center justify-center whitespace-nowrap">
+                        :class="isSending ? 'bg-slate-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-sm hover:shadow-md'"
+                        class="text-white px-5 py-3 rounded-xl transition-all duration-200 flex items-center justify-center whitespace-nowrap font-medium">
                         <svg v-if="!isSending" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
@@ -655,13 +651,12 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </div>
             </div>
 
-            <!-- 右侧按钮容器，继承父级宽度 -->
+            <!-- 右侧按钮容器 -->
             <div class="w-3/4 flex justify-end">
-                <!-- 用户配置 - 放置在输入区域内最右端 -->
                 <button @click="showConfig = true"
-                    class="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg border border-gray-200 flex items-center justify-center self-center transition-transform duration-200 hover:scale-120">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                        stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:stroke-indigo-500 transition-colors">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path
                             d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
@@ -689,70 +684,143 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 @import 'katex/dist/katex.min.css';
 
 .msg-ai {
-    line-height: 1.6;
+    line-height: 1.75;
+    font-size: 0.94rem;
 }
 
-/* 基础 Markdown 样式 */
 .msg-ai h1 {
-    font-size: 1.6em;
-    font-weight: bold;
-    margin: 0.33em 0;
+    font-size: 1.5em;
+    font-weight: 700;
+    margin: 0.6em 0 0.3em;
+    color: #0f172a;
+    letter-spacing: -0.01em;
 }
 
 .msg-ai h2 {
-    font-size: 1.3em;
-    font-weight: bold;
-    margin: 0.33em 0;
+    font-size: 1.25em;
+    font-weight: 600;
+    margin: 0.5em 0 0.25em;
+    color: #1e293b;
+}
+
+.msg-ai h3 {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 0.4em 0 0.2em;
+    color: #334155;
 }
 
 .msg-ai hr {
-    color: #393939;
-    height: 10px;
-    margin: 0.6em 0;
+    border: none;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #cbd5e1, transparent);
+    margin: 1em 0;
 }
 
 .msg-ai p {
-    margin: 0.2em 0;
+    margin: 0.4em 0;
 }
 
 .msg-ai pre {
-    background-color: #f6f8fa;
-    padding: 16px;
-    border-radius: 6px;
+    background: #1e293b;
+    padding: 16px 20px;
+    border-radius: 10px;
     overflow: auto;
+    margin: 0.6em 0;
+    border: 1px solid #334155;
+}
+
+.msg-ai pre code {
+    background: transparent;
+    color: #e2e8f0;
+    padding: 0;
+    border-radius: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+    font-size: 0.85em;
+    line-height: 1.6;
 }
 
 .msg-ai code {
-    font-family: consolas;
-    background-color: rgba(175, 184, 193, 0.2);
-    padding: 0.2em 0.4em;
-    border-radius: 6px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+    background-color: #f1f5f9;
+    color: #6366f1;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-weight: 500;
 }
 
 .msg-ai blockquote {
-    border-left: 4px solid #b4b5b5;
-    color: #6a737d;
-    padding: 0 1em;
-    margin: 0 0 1em 0;
+    border-left: 3px solid #6366f1;
+    color: #475569;
+    background: #f8fafc;
+    padding: 0.5em 1em;
+    margin: 0.5em 0;
+    border-radius: 0 6px 6px 0;
+}
+
+.msg-ai strong {
+    color: #0f172a;
+    font-weight: 600;
 }
 
 .msg-ai table {
     border-collapse: collapse;
     width: 100%;
+    margin: 0.6em 0;
+    font-size: 0.9em;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .msg-ai th,
 .msg-ai td {
-    border: 1px solid #dfe2e5;
-    padding: 6px 13px;
+    border: 1px solid #e2e8f0;
+    padding: 8px 14px;
+    text-align: left;
+}
+
+.msg-ai th {
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 600;
 }
 
 .msg-ai tr {
     background-color: #fff;
-    border-top: 1px solid #c6cbd1;
 }
 
 .msg-ai tr:nth-child(2n) {
-    background-color: #f6f8fa;
+    background-color: #f8fafc;
+}
+
+.msg-ai a {
+    color: #6366f1;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+    transition: border-color 0.15s ease;
+}
+
+.msg-ai a:hover {
+    border-bottom-color: #6366f1;
+}
+
+.msg-ai ul,
+.msg-ai ol {
+    padding-left: 1.5em;
+    margin: 0.4em 0;
+}
+
+.msg-ai li {
+    margin: 0.15em 0;
+}
+
+.msg-ai li::marker {
+    color: #94a3b8;
+}
+
+.msg-ai img {
+    max-width: 100%;
+    border-radius: 8px;
 }
 </style>

@@ -67,27 +67,28 @@ defineExpose({
             leave-active-class="transition ease-in-out duration-300"
             leave-from-class="transform translate-x-0 opacity-100"
             leave-to-class="transform translate-x-full opacity-0">
-            <div class="fixed top-0 right-0 h-full w-2/5 bg-[#eefbff] shadow-xl z-50 p-6 overflow-y-auto mt-7.5"
+            <div class="fixed top-0 right-0 h-[calc(100vh-32px)] w-105 max-w-[90vw] bg-white shadow-2xl z-50 p-6 overflow-y-auto mt-8 border-l border-slate-200"
                 v-if="props.isVisible" @click.stop>
                 <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-xl font-bold">用户配置</h2>
-                    <button @click="closeConfig" class="text-gray-500 hover:text-gray-700 text-2xl">
+                    <h2 class="text-lg font-semibold text-slate-800">用户配置</h2>
+                    <button @click="closeConfig" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 text-xl">
                         &times;
                     </button>
                 </div>
 
                 <!-- 自定义SystemPrompt -->
                 <div class="mb-8">
-                    <h3 class="text-lg font-semibold mb-4 flex items-center">
+                    <h3 class="text-base font-semibold text-slate-700 mb-4 flex items-center">
+                        <span class="w-1 h-4 bg-indigo-500 rounded-full mr-2"></span>
                         自定义系统提示词
                     </h3>
 
                     <!-- 全局系统提示词 -->
                     <div class="mb-6">
                         <div class="flex items-center mb-2 relative">
-                            <label class="font-medium">全局系统提示词</label>
+                            <label class="text-sm font-medium text-slate-600">全局系统提示词</label>
                             <div class="relative inline-block">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500"
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1.5 text-slate-400 hover:text-slate-600 cursor-help transition-colors"
                                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                     @mouseenter="showGlobalTooltip = true"
                                     @mouseleave="showGlobalTooltip = false">
@@ -95,23 +96,22 @@ defineExpose({
                                         d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 <div v-if="showGlobalTooltip"
-                                    class="absolute left-0 bottom-6 z-50 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg shadow-lg max-w-50 min-w-37.5 w-fit transition-opacity duration-300 opacity-100 whitespace-normal transform translate-x-[-40%]"
-                                    style="border-radius: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+                                    class="absolute left-0 bottom-6 z-50 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg shadow-xl max-w-56 min-w-40 w-fit transition-opacity duration-200 opacity-100 whitespace-normal transform -translate-x-1/3 pointer-events-none">
                                     新建对话时默认的提示词，若没有指定当前对话系统提示词则使用此提示词
                                 </div>
                             </div>
                         </div>
                         <textarea v-model="globalSystemPrompt"
-                            class="w-full h-32 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none bg-white focus:ring-2 focus:ring-blue-500 resize-none"
+                            class="w-full h-32 px-4 py-3 border border-slate-200 rounded-xl focus:outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none text-sm text-slate-700 placeholder-slate-400 transition-all duration-200"
                             :placeholder="defaultSystemPrompt"></textarea>
                     </div>
 
                     <!-- 当前对话系统提示词 -->
                     <div>
                         <div class="flex items-center mb-2 relative">
-                            <label class="font-medium">当前对话系统提示词</label>
+                            <label class="text-sm font-medium text-slate-600">当前对话系统提示词</label>
                             <div class="relative inline-flex items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-gray-500 shrink-0"
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1.5 text-slate-400 hover:text-slate-600 cursor-help transition-colors shrink-0"
                                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                     @mouseenter="showCurrentTooltip = true"
                                     @mouseleave="showCurrentTooltip = false">
@@ -119,22 +119,21 @@ defineExpose({
                                         d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 <div v-if="showCurrentTooltip"
-                                    class="absolute left-0 bottom-6 z-50 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg shadow-lg max-w-50 min-w-37.5 w-fit transition-opacity duration-300 opacity-100 whitespace-normal transform translate-x-[-40%]"
-                                    style="border-radius: 5px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+                                    class="absolute left-0 bottom-6 z-50 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg shadow-xl max-w-56 min-w-40 w-fit transition-opacity duration-200 opacity-100 whitespace-normal transform -translate-x-1/3 pointer-events-none">
                                     当前对话提示词，留空则使用全局提示词，若当前对话已开始，则无法再更改提示词
                                 </div>
-                                <span v-if="isFirstMessageSent" class="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
-                                    （当前对话已开始，不可再更改提示词）
+                                <span v-if="isFirstMessageSent" class="ml-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg whitespace-nowrap shrink-0 font-medium">
+                                    对话已开始，提示词已锁定
                                 </span>
                             </div>
                         </div>
                         <textarea v-model="config.systemPrompt"
                             :disabled="isFirstMessageSent"
                             :class="[
-                                'w-full h-32 px-4 py-2 border rounded-lg focus:outline-none resize-none',
+                                'w-full h-32 px-4 py-3 border rounded-xl focus:outline-none resize-none text-sm transition-all duration-200',
                                 isFirstMessageSent 
-                                    ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed' 
-                                    : 'border-gray-300 bg-white focus:ring-2 focus:ring-blue-500'
+                                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                    : 'border-slate-200 bg-slate-50 focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-slate-700 placeholder-slate-400'
                             ]"
                             :placeholder="globalSystemPrompt ? globalSystemPrompt: defaultSystemPrompt"
                             :title="isFirstMessageSent ? '当前对话已开始，无法修改系统提示词' : ''"></textarea>
@@ -143,60 +142,66 @@ defineExpose({
 
                 <!-- 自定义模型参数 -->
                 <div class="mb-8">
-                    <h3 class="text-lg font-semibold mb-4">自定义模型参数</h3>
+                    <h3 class="text-base font-semibold text-slate-700 mb-4 flex items-center">
+                        <span class="w-1 h-4 bg-indigo-500 rounded-full mr-2"></span>
+                        自定义模型参数
+                    </h3>
 
-                    <div class="space-y-4">
+                    <div class="space-y-5">
                         <div>
-                            <div class="flex justify-between mb-1">
-                                <span>temperature</span>
-                                <span>{{ config.temperature.toFixed(2) }}</span>
+                            <div class="flex justify-between mb-1.5">
+                                <span class="text-sm font-medium text-slate-600">temperature</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ config.temperature.toFixed(2) }}</span>
                             </div>
                             <input type="range" min="0" max="2" step="0.01" v-model.number="config.temperature"
-                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-                            <p class="text-sm text-gray-500 mt-1">控制AI回复的随机性，值越高越随机</p>
+                                class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
+                            <p class="text-xs text-slate-400 mt-1">控制AI回复的随机性，值越高越随机</p>
                         </div>
 
                         <div>
-                            <div class="flex justify-between mb-1">
-                                <span>max_tokens</span>
-                                <span>{{ config.maxTokens }}</span>
+                            <div class="flex justify-between mb-1.5">
+                                <span class="text-sm font-medium text-slate-600">max_tokens</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ config.maxTokens }}</span>
                             </div>
                             <input type="range" min="500" max="8000" step="100" v-model.number="config.maxTokens"
-                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-                            <p class="text-sm text-gray-500 mt-1">控制AI回复的最大长度</p>
+                                class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
+                            <p class="text-xs text-slate-400 mt-1">控制AI回复的最大长度</p>
                         </div>
 
                         <div>
-                            <div class="flex justify-between mb-1">
-                                <span>top_p</span>
-                                <span>{{ config.topP.toFixed(2) }}</span>
+                            <div class="flex justify-between mb-1.5">
+                                <span class="text-sm font-medium text-slate-600">top_p</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ config.topP.toFixed(2) }}</span>
                             </div>
                             <input type="range" min="-1" max="1" step="0.01" v-model.number="config.topP"
-                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-                            <p class="text-sm text-gray-500 mt-1">temperature的替代方案（不建议同时修改top_p与temperature）</p>
+                                class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
+                            <p class="text-xs text-slate-400 mt-1">temperature的替代方案（不建议同时修改top_p与temperature）</p>
                         </div>
 
                         <div>
-                            <div class="flex justify-between mb-1">
-                                <span>frequency_penalty</span>
-                                <span>{{ config.frequencyPenalty.toFixed(2) }}</span>
+                            <div class="flex justify-between mb-1.5">
+                                <span class="text-sm font-medium text-slate-600">frequency_penalty</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ config.frequencyPenalty.toFixed(2) }}</span>
                             </div>
                             <input type="range" min="-2" max="2" step="0.1" v-model.number="config.frequencyPenalty"
-                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-                            <p class="text-sm text-gray-500 mt-1">如果该值为正，将降低模型重复相同内容的可能性</p>
+                                class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
+                            <p class="text-xs text-slate-400 mt-1">如果该值为正，将降低模型重复相同内容的可能性</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- 指令列表指南 -->
                 <div class="mb-6">
-                    <h3 class="text-lg font-semibold mb-4">指令列表指南</h3>
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <ul class="list-disc pl-5 space-y-2 text-sm">
-                            <li><strong>/displayToken</strong>: 显示当前 API Token</li>
-                            <li><strong>/hideToken</strong>: 隐藏当前 API Token</li>
-                            <li><strong>/balance</strong>: 查询当前API Token余额</li>
-                            <li><strong>/clearHistory</strong>: 清空所有历史对话记录</li>
+                    <h3 class="text-base font-semibold text-slate-700 mb-4 flex items-center">
+                        <span class="w-1 h-4 bg-indigo-500 rounded-full mr-2"></span>
+                        指令列表指南
+                    </h3>
+                    <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+                        <ul class="list-disc pl-5 space-y-2 text-sm text-slate-600">
+                            <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/displayToken</code> 显示当前 API Token</li>
+                            <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/hideToken</code> 隐藏当前 API Token</li>
+                            <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/balance</code> 查询当前API Token余额</li>
+                            <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/clearHistory</code> 清空所有历史对话记录</li>
                         </ul>
                     </div>
                 </div>

@@ -30,14 +30,14 @@ const handleNegativeSelect = () => {
 </script>
 
 <template>
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex flex-col items-center justify-center p-4 pb-4 pt-3.5 w-full">
-        <div class="text-center mb-2 text-gray-500 font-medium">
-            <em>AI为你提供了选项，请单击选择：/&nbsp;<span @click="emits('close')" class="underline hover:text-gray-700">我不想使用AI给我提供的选项</span></em>
+    <div class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200 flex flex-col items-center justify-center p-4 pb-4 pt-3.5 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div class="text-center mb-3 text-slate-500 text-sm">
+            <em>AI为你提供了选项，请单击选择：&nbsp;</em><span @click="emits('close')" class="text-indigo-500 underline cursor-pointer hover:text-indigo-700 transition-colors">跳过选项</span>
         </div>
         <div class="flex space-x-4">
             <button 
                 @click="handlePositiveSelect"
-                class="whitespace-nowrap shrink-0 min-w-50 bg-[#328ef1] hover:bg-[#0479f6] text-white px-6 py-2 rounded-lg transition duration-200 flex items-center justify-center space-x-2"
+                class="whitespace-nowrap shrink-0 min-w-30 bg-indigo-600 hover:bg-indigo-700 shadow-sm hover:shadow-md text-white px-6 py-2.5 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 font-medium text-sm"
             >
                 <span>{{ props.positive as string + (positiveExtraInput ? ': ' : '') }}</span>
                 <input 
@@ -46,12 +46,12 @@ const handleNegativeSelect = () => {
                     @click.stop
                     type="text"
                     placeholder="请输入..."
-                    class="w-32 px-2 py-0.5= border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
+                    class="w-32 px-2 py-1 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/50 text-slate-700 text-sm bg-white/90"
                 />
             </button>
             <button 
                 @click="handleNegativeSelect"
-                class="whitespace-nowrap shrink-0 min-w-50 bg-[#eb5bcc] hover:bg-[#ef29c4] text-white px-6 py-2 rounded-lg transition duration-200 flex items-center justify-center space-x-2"
+                class="whitespace-nowrap shrink-0 min-w-30 bg-slate-700 hover:bg-slate-800 shadow-sm hover:shadow-md text-white px-6 py-2.5 rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 font-medium text-sm"
             >
                 <span>{{ props.negative as string + (negativeExtraInput ? ': ' : '') }}</span>
                 <input 
@@ -60,15 +60,9 @@ const handleNegativeSelect = () => {
                     @click.stop
                     type="text"
                     placeholder="请输入..."
-                    class="w-32 px-2 py-0.5 border border-white/30 rounded focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 text-sm"
+                    class="w-32 px-2 py-1 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/50 text-slate-700 text-sm bg-white/90"
                 />
             </button>
-            <!-- <button>
-                @click="emits('close')"
-                class="whitespace-nowrap shrink-0 min-w-50 bg-gray-400 hover:bg-gray-500 text-white px-6 py-2 rounded-lg transition duration-200 flex items-center justify-center space-x-2"
-            >
-                <span class="underline">我不想使用AI给我提供的选项</span>
-            </button> -->
         </div>
     </div>
 </template>

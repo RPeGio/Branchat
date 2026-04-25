@@ -97,7 +97,7 @@ pub async fn stream_chat(
                         "role": ctx.role,
                     })
                 }).collect::<Vec<_>>(),
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-pro",
             "stream": true,
             "max_tokens": model_config.max_tokens,
             "temperature": model_config.temperature,
