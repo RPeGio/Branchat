@@ -48,18 +48,56 @@ const options = ref<OptionItem>({
     negative: null,
     negativeExtraInput: false,
 });
+const OPTION_NEEDED = '@*@';
+const OPTION_NOT_NEEDED = '@@@';
+const OPTION_REGEX = new RegExp(`((?:${OPTION_NOT_NEEDED}|${OPTION_NEEDED.replace(/\*/g, '\\*')})[\\s\\S]*)$`);
+
 const messages = ref<MessageItem[]>([]);
 let messageIdCounter = 0;
 
 const notificationVisible = ref(false);
 const notificationMessage = ref('');
+const notificationMode = ref<'alert' | 'confirm'>('alert');
+let confirmResolve: ((value: boolean) => void) | null = null;
+
+const showSideToolsId = ref<number | null>(null);
 
 const showNotification = (msg: string) => {
+    notificationMode.value = 'alert';
     notificationMessage.value = msg;
     notificationVisible.value = true;
 };
 
+const showConfirm = (msg: string): Promise<boolean> => {
+    notificationMode.value = 'confirm';
+    notificationMessage.value = msg;
+    notificationVisible.value = true;
+    return new Promise((resolve) => {
+        confirmResolve = resolve;
+    });
+};
+
+const onNotificationConfirm = () => {
+    if (confirmResolve) {
+        confirmResolve(true);
+        confirmResolve = null;
+    }
+    notificationVisible.value = false;
+};
+
+const onNotificationCancel = () => {
+    if (confirmResolve) {
+        confirmResolve(false);
+        confirmResolve = null;
+    }
+    notificationVisible.value = false;
+};
+
 const closeNotification = () => {
+    if (confirmResolve) {
+        confirmResolve(false);
+        confirmResolve = null;
+    }
     notificationVisible.value = false;
 };
 
@@ -113,8 +151,7 @@ const loadHistoryToApp = async (item: HistoryItem) => {
     const contexts = item.contexts;
     
     for (const msg of contexts) {
-        const rawOptionsRegex = /((?:@@@|@\*@)[\s\S]*)$/;
-        const match = msg.content.match(rawOptionsRegex);
+        const match = msg.content.match(OPTION_REGEX);
         let cleanContent = msg.content;
         if (match && msg.role !== 'system') {
             console.log(match[0]);
@@ -188,7 +225,7 @@ function extractOptions(raw: string | null): OptionItem | null {
             negative: match[3].trim(),
             negativeExtraInput: match[4] === 'true',
         };
-        // console.log('解析后的选项:', result);
+        console.log('解析后的选项:', result);
         return result;
     }
 
@@ -197,6 +234,15 @@ function extractOptions(raw: string | null): OptionItem | null {
 
 function handleOptionSelection(selectedOption: string) {
     console.log('用户选择了:', selectedOption);
+    
+    const lastAiMsg = [...messages.value].reverse().find(m => m.role === 'assistant');
+    if (lastAiMsg) {
+        if (lastAiMsg.option?.positive && selectedOption.startsWith(lastAiMsg.option.positive)) {
+            lastAiMsg.selection = 0;
+        } else if (lastAiMsg.option?.negative && selectedOption.startsWith(lastAiMsg.option.negative)) {
+            lastAiMsg.selection = 1;
+        }
+    }
     
     // 直接发送消息，不需要通过输入框
     sendOptionMessage(selectedOption);
@@ -250,7 +296,7 @@ async function sendMessageToAI(userInput: string) {
         if (finalContexts && finalContexts.length == 4) {
             finalContexts.shift();
             finalContexts[0] = {
-                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不能超过15个字符，严禁使用markdown格式',
+                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不要出现任何“标题：”之类的解释性词语，不能超过15个字符，严禁使用markdown格式',
                 'role': 'system',
             };
             
@@ -259,6 +305,8 @@ async function sendMessageToAI(userInput: string) {
                 options.value = extractedOption;
                 currentOptionList.value.push(options.value);
                 isGivenOptions.value = true;
+                const lastAiMsg = [...messages.value].reverse().find(m => m.role === 'assistant');
+                if (lastAiMsg) lastAiMsg.option = extractedOption;
             }
             
             invoke('title_generation', {
@@ -274,6 +322,8 @@ async function sendMessageToAI(userInput: string) {
                 options.value = extractedOption;
                 currentOptionList.value.push(options.value);
                 isGivenOptions.value = true;
+                const lastAiMsg = [...messages.value].reverse().find(m => m.role === 'assistant');
+                if (lastAiMsg) lastAiMsg.option = extractedOption;
             }
             await updateHistory();
         }
@@ -303,7 +353,7 @@ function collectContexts(): ContextItem[] {
             'role': 'system',
         },
         {
-            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"@*@"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"；如果你认为不需要，则在一个chunk内输出"@@@"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解',
+            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。`,
             'role': 'system',
         }
     ];
@@ -357,7 +407,7 @@ async function updateHistory(title?: string) {
             'role': 'system',
         },
         {
-            'content': '请在正文输出结束后，[DONE]输出之前输出一个空行(不要输出[DONE]!!!)，然后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"@*@"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"；如果你认为不需要，则在一个chunk内输出"@@@"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字',
+            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。`,
             'role': 'system',
         }
     ];
@@ -399,6 +449,18 @@ const historyItems = ref<HistoryItem[]>([]);
 async function loadHistoryItems() {
     const store = await Store.load('store.json');
     historyItems.value = await store.get('history') || [];
+}
+
+function backtrace(messageId: number) {
+    showConfirm(`确认回溯至此消息吗？\n（回溯后将删除此条消息后面的所有消息）`).then((confirmed) => {
+        if (confirmed) {
+            const messageIndex = messages.value.findIndex(msg => msg.id === messageId) + 1;
+            if (messageIndex !== -1) {
+                messages.value.splice(messageIndex, messages.value.length - messageIndex);
+                updateHistory();
+            }
+        }
+    });
 }
 
 function createNewConversation() {
@@ -515,21 +577,21 @@ listen("completion-chunk", async (event) => {
             lastMessage.content = markdownRawLines.value;
             
             // 检查是否需要处理选项
-            if (markdownRawLines.value.includes('@*@') || markdownRawLines.value.includes('@@@')) {
-                if (markdownRawLines.value.includes('@*@')) {
+            if (markdownRawLines.value.includes(OPTION_NEEDED) || markdownRawLines.value.includes(OPTION_NOT_NEEDED)) {
+                if (markdownRawLines.value.includes(OPTION_NEEDED)) {
                     if (startCollectingOptions.value) {
                         options.value.raw += payload.trim();
-                        lastMessage.content = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf('@*@'));
+                        lastMessage.content = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf(OPTION_NEEDED));
                         lastMessage.htmlContent = await processMarkdown(lastMessage.content);
                     } else {
-                        const cleanMarkdown = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf('@*@'));
+                        const cleanMarkdown = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf(OPTION_NEEDED));
                         lastMessage.content = cleanMarkdown;
                         lastMessage.htmlContent = await processMarkdown(cleanMarkdown);
                         startCollectingOptions.value = true;
                         options.value.raw = '';
                     }
-                } else if (markdownRawLines.value.includes('@@@')) {
-                    const cleanMarkdown = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf('@@@'));
+                } else if (markdownRawLines.value.includes(OPTION_NOT_NEEDED)) {
+                    const cleanMarkdown = markdownRawLines.value.substring(0, markdownRawLines.value.indexOf(OPTION_NOT_NEEDED));
                     lastMessage.content = cleanMarkdown;
                     lastMessage.htmlContent = await processMarkdown(cleanMarkdown);
                 }
@@ -550,8 +612,8 @@ listen("completion-end", async (event) => {
     if (messages.value.length > 0 && messages.value[messages.value.length - 1].role === 'assistant') {
         const lastMessage = messages.value[messages.value.length - 1];
         let cleanContent = lastMessage.content;
-        const atStarIdx = cleanContent.indexOf('@*@');
-        const atAtIdx = cleanContent.indexOf('@@@');
+        const atStarIdx = cleanContent.indexOf(OPTION_NEEDED);
+        const atAtIdx = cleanContent.indexOf(OPTION_NOT_NEEDED);
         if (atStarIdx !== -1) {
             cleanContent = cleanContent.substring(0, atStarIdx);
         } else if (atAtIdx !== -1) {
@@ -592,10 +654,14 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </div>
                 
                 <!-- AI消息 -->
-                <div v-else-if="message.role === 'assistant'" class="flex justify-start">
+                <div v-else-if="message.role === 'assistant'" class="flex justify-start" @mouseenter="showSideToolsId = message.id" @mouseleave="showSideToolsId = null">
                     <div class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-5 py-3 max-w-[70%] shadow-sm">
                         <div class="msg msg-ai text-slate-700 **:select-text!" v-html="message.htmlContent || message.content"></div>
                     </div>
+                    <span v-show="showSideToolsId === message.id" class="flex items-end ml-2 cursor-pointer gap-1 text-gray-300 hover:text-gray-500 transition-colors duration-200" @click="backtrace(message.id)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="21" viewBox="0 5 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10L9 4l-6 6"/><path d="M20 20h-7a4 4 0 0 1-4-4V5"/></svg>
+                        回溯至这里
+                    </span>
                 </div>
             </div>
         </div>
@@ -691,7 +757,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             @close="handleOptionClose"
         />
 
-        <Notification :visible="notificationVisible" :message="notificationMessage" @close="closeNotification" />
+        <Notification :visible="notificationVisible" :message="notificationMessage" :mode="notificationMode" @close="closeNotification" @confirm="onNotificationConfirm" @cancel="onNotificationCancel" />
     </div>
 </template>
 
