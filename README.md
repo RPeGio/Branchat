@@ -1,4 +1,4 @@
-# 分支交互式AI桌面应用
+# Branchat
 
 一个基于 Tauri + Vue + TypeScript 开发的分支式对话AI桌面应用，支持多轮对话、历史记录管理。
 

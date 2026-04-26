@@ -473,7 +473,7 @@ function createNewConversation() {
         frequencyPenalty: defaultUserConfig.frequencyPenalty
     };
     isFirstMessageSent.value = false;
-    setTitle('分支式AIChat');
+    setTitle('Branchat');
 }
 
 function setTitle(title: string) {
