@@ -38,7 +38,7 @@ const loadHistoryToApp = (item: HistoryItem) => {
             leave-active-class="transition ease-in-out duration-300"
             leave-from-class="transform translate-x-0 opacity-100"
             leave-to-class="transform -translate-x-full opacity-0">
-            <div class="fixed top-0 left-0 h-[calc(100vh-32px)] w-[420px] max-w-[90vw] bg-white shadow-2xl z-50 p-6 overflow-y-auto mt-8 border-r border-slate-200" v-if="props.isVisible" @click.stop>
+            <div class="fixed top-0 left-0 h-[calc(100vh-32px)] w-105 max-w-[90vw] bg-gray-100 shadow-2xl z-50 p-6 overflow-y-auto mt-8 border-r border-slate-200" v-if="props.isVisible" @click.stop>
                 <div class="flex justify-between items-center mb-6">
                     <h2 class="text-lg font-semibold text-slate-800">历史对话记录</h2>
                     <div class="flex items-center space-x-2">

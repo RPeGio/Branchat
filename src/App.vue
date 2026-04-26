@@ -3,6 +3,7 @@ import { onBeforeMount, ref, watch, nextTick } from 'vue';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
 import OptionSelection from './components/OptionSelection.vue';
+import Notification from './components/Notification.vue';
 import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem, MessageItem } from './data/types'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -49,6 +50,18 @@ const options = ref<OptionItem>({
 });
 const messages = ref<MessageItem[]>([]);
 let messageIdCounter = 0;
+
+const notificationVisible = ref(false);
+const notificationMessage = ref('');
+
+const showNotification = (msg: string) => {
+    notificationMessage.value = msg;
+    notificationVisible.value = true;
+};
+
+const closeNotification = () => {
+    notificationVisible.value = false;
+};
 
 onBeforeMount(async () => {
     const store = await Store.load('store.json', {
@@ -265,7 +278,7 @@ async function sendMessageToAI(userInput: string) {
             await updateHistory();
         }
     }).catch((err) => {
-        alert(`An error occurs when sending message: ${err}`);
+        showNotification(`An error occurs when sending message: ${err}`);
         currentCharacter.value = null;
         isSending.value = false;
     });
@@ -429,7 +442,7 @@ async function sendMsg() {
         await invoke("balance", {
             key: bearerToken.value,
         }).catch((err) => {
-            alert(`An error occurs: ${err}`)
+            showNotification(`An error occurs: ${err}`)
         });
         emptyInput();
         return;
@@ -437,9 +450,9 @@ async function sendMsg() {
 
     if (userInput == '/clearHistory') {
         await clearHistory().then(() => {
-            alert('History cleared successfully');
+            showNotification('History cleared successfully');
         }).catch((err) => {
-            alert(`An error occurs: ${err}`)
+            showNotification(`An error occurs: ${err}`)
         });
         emptyInput();
         return;
@@ -552,7 +565,7 @@ listen("completion-end", async (event) => {
 listen("balance", (event) => {
     console.log('Balance info:', event.payload);
     const infos = event.payload as BalanceMessage;
-    alert(`当前api-key可用性：${infos.available}\n当前剩余余额：${infos.balance} ${infos.currency}`);
+    showNotification(`当前api-key可用性：${infos.available}\n当前剩余余额：${infos.balance} ${infos.currency}`);
 });
 
 // 监听消息变化，自动滚动
@@ -567,7 +580,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 </script>
 
 <template>
-    <div class="h-[calc(100vh-32px-102px)] bg-slate-50 flex flex-col">
+    <div class="h-[calc(100vh-32px-102px)] bg-slate-100 flex flex-col">
         <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-5" style="scroll-padding-bottom: 1rem;">
             <!-- 使用v-for渲染消息列表 -->
             <div v-for="message in messages" :key="message.id" class="space-y-4">
@@ -614,7 +627,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 
         <!-- 输入区域 - 固定在底部 -->
         <div v-show="!isGivenOptions"
-            class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+            class="fixed bottom-0 left-0 right-0 bg-indigo-50 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
             <!-- 左侧按钮容器 -->
             <div class="w-3/4 flex space-x-3">
                 <button @click="showHistory = true, loadHistoryItems()"
@@ -677,6 +690,8 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             @select="handleOptionSelection"
             @close="handleOptionClose"
         />
+
+        <Notification :visible="notificationVisible" :message="notificationMessage" @close="closeNotification" />
     </div>
 </template>
 
