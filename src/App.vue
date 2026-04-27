@@ -353,7 +353,7 @@ function collectContexts(): ContextItem[] {
             'role': 'system',
         },
         {
-            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。`,
+            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。在遇到敏感内容时请不要添加任何的删除线`,
             'role': 'system',
         }
     ];
@@ -407,7 +407,7 @@ async function updateHistory(title?: string) {
             'role': 'system',
         },
         {
-            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。`,
+            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。在遇到敏感内容时请不要添加任何的删除线`,
             'role': 'system',
         }
     ];
@@ -452,12 +452,18 @@ async function loadHistoryItems() {
 }
 
 function backtrace(messageId: number) {
-    showConfirm(`确认回溯至此消息吗？\n（回溯后将删除此条消息后面的所有消息）`).then((confirmed) => {
+    showConfirm(`确认回溯至此消息吗？\n（回溯后将删除此条消息后面的所有消息，并且会重置此处选项选择）`).then((confirmed) => {
         if (confirmed) {
             const messageIndex = messages.value.findIndex(msg => msg.id === messageId) + 1;
             if (messageIndex !== -1) {
                 messages.value.splice(messageIndex, messages.value.length - messageIndex);
                 updateHistory();
+                if (messages.value[messageIndex - 1].option) {
+                    isGivenOptions.value = true;
+                    options.value = messages.value[messageIndex - 1].option as OptionItem;
+                } else {
+                    isGivenOptions.value = false;
+                }
             }
         }
     });
@@ -643,25 +649,34 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 
 <template>
     <div class="h-[calc(100vh-32px-102px)] bg-slate-100 flex flex-col">
-        <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6 space-y-5" style="scroll-padding-bottom: 1rem;">
+        <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6" style="scroll-padding-bottom: 1rem;">
+            <!-- 开场界面 - 无消息时显示 -->
+            <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center select-none">
+                <img src="/icons/icon.png" draggable="false" alt="Branchat" class="w-36 h-36 mb-5 opacity-90" />
+                <h1 class="text-4xl font-bold text-slate-600 tracking-wide mb-2.5">&gt;_Branchat_&lt;</h1>
+                <p class="text-lg text-slate-400 font-medium">基于Deepseek v4 Pro的分支交互式AIChat开源桌面应用</p>
+            </div>
+
             <!-- 使用v-for渲染消息列表 -->
-            <div v-for="message in messages" :key="message.id" class="space-y-4">
-                <!-- 用户消息 -->
-                <div v-if="message.role === 'user'" class="flex justify-end">
-                    <div class="bg-indigo-600 text-white rounded-2xl rounded-br-md px-5 py-3 max-w-[70%] shadow-sm">
-                        <div class="msg msg-user text-white select-text!">{{ message.content }}</div>
+            <div v-else class="space-y-5">
+                <div v-for="message in messages" :key="message.id" class="space-y-4">
+                    <!-- 用户消息 -->
+                    <div v-if="message.role === 'user'" class="flex justify-end">
+                        <div class="bg-indigo-600 text-white rounded-2xl rounded-br-md px-5 py-3 max-w-[70%] shadow-sm">
+                            <div class="msg msg-user text-white select-text!">{{ message.content }}</div>
+                        </div>
                     </div>
-                </div>
-                
-                <!-- AI消息 -->
-                <div v-else-if="message.role === 'assistant'" class="flex justify-start" @mouseenter="showSideToolsId = message.id" @mouseleave="showSideToolsId = null">
-                    <div class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-5 py-3 max-w-[70%] shadow-sm">
-                        <div class="msg msg-ai text-slate-700 **:select-text!" v-html="message.htmlContent || message.content"></div>
+                    
+                    <!-- AI消息 -->
+                    <div v-else-if="message.role === 'assistant'" class="flex justify-start" @mouseenter="showSideToolsId = message.id" @mouseleave="showSideToolsId = null">
+                        <div class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-5 py-3 max-w-[70%] shadow-sm">
+                            <div class="msg msg-ai text-slate-700 **:select-text!" v-html="message.htmlContent || message.content"></div>
+                        </div>
+                        <span v-show="showSideToolsId === message.id" class="flex items-end ml-2 cursor-pointer gap-1 text-slate-300 hover:text-slate-400 transition-colors duration-200" @click="backtrace(message.id)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="21" viewBox="0 5 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10L9 4l-6 6"/><path d="M20 20h-7a4 4 0 0 1-4-4V5"/></svg>
+                            回溯至这里
+                        </span>
                     </div>
-                    <span v-show="showSideToolsId === message.id" class="flex items-end ml-2 cursor-pointer gap-1 text-gray-300 hover:text-gray-500 transition-colors duration-200" @click="backtrace(message.id)">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="21" viewBox="0 5 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10L9 4l-6 6"/><path d="M20 20h-7a4 4 0 0 1-4-4V5"/></svg>
-                        回溯至这里
-                    </span>
                 </div>
             </div>
         </div>
@@ -816,13 +831,13 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
     color: #e2e8f0;
     padding: 0;
     border-radius: 0;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+    font-family: 'Consolas', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monaco', monospace;
     font-size: 0.85em;
     line-height: 1.6;
 }
 
 .msg-ai code {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+    font-family: 'Consolas', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monaco', monospace;
     background-color: #f1f5f9;
     color: #6366f1;
     padding: 0.15em 0.4em;

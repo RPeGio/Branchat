@@ -129,32 +129,41 @@
     <div data-tauri-drag-region class="titlebar">
       <div data-tauri-drag-region class="titlebar-title" id="titlebar-title">
         <span class="titlebar-favicon">
-          <img src="./src-tauri/icons/favicon.ico" alt="favicon" />
+          <img src="./src-tauri/icons/favicon.ico" alt="favicon" draggable="false" />
         </span>
-        <span data-tauri-drag-region id="titlebar-title-text" style="
-          font-size: 0.8rem;
-          font-weight: 500;
-          color: #c7d2fe;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          letter-spacing: 0.02em;">Branchat</span>
       </div>
+      <span data-tauri-drag-region id="titlebar-title-text" style="
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #c7d2fe;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        letter-spacing: 0.02em;">Branchat</span>
       <div class="titlebar-buttons">
         <div class="titlebar-button" id="titlebar-minimize">
           <img
             src="https://api.iconify.design/mdi:minimize.svg"
             alt="minimize"
+            draggable="false"
           />
         </div>
         <div class="titlebar-button" id="titlebar-maximize">
           <img
             src="https://api.iconify.design/mdi:maximize.svg"
             alt="maximize"
+            draggable="false"
           />
         </div>
         <div class="titlebar-button" id="titlebar-close">
-          <img src="https://api.iconify.design/mdi:close.svg" alt="close"/>
+          <img
+            src="https://api.iconify.design/mdi:close.svg"
+            alt="close"
+            draggable="false"
+          />
         </div>
       </div>
     </div>
