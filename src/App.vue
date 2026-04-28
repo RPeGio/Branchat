@@ -8,7 +8,10 @@ import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, Config
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
+import { open, save } from '@tauri-apps/plugin-dialog'
+import { BaseDirectory, create, readFile } from '@tauri-apps/plugin-fs'
 import { processMarkdown } from './utils/markdownRenderer/processor';
+import { decode } from 'node:punycode';
 
 const showHistory = ref(false);
 const showConfig = ref(false);
@@ -501,6 +504,50 @@ async function deleteHistoryItem(item: HistoryItem) {
     });
 }
 
+async function exportHistoryItem(item: HistoryItem) {
+    const path = await save({
+        filters: [
+            {
+                name: 'AIChat History Records',
+                extensions: ['json'],
+            }
+        ]
+    });
+    console.log(path);
+    if (path) {
+        const file = await create(path, { baseDir: BaseDirectory.AppConfig });
+        const encodedHistory = new TextEncoder().encode(JSON.stringify(item));
+        await file.write(encodedHistory);
+        await file.close();
+    }
+}
+
+async function importHistoryItem() {
+    const path = await open({
+        multiple: false,
+        filters: [{
+            name: 'AIChat History Records',
+            extensions: ['json'],
+        }]
+    });
+    console.log(path);
+    if (path) {
+        const raw = await readFile(path, { baseDir: BaseDirectory.AppConfig });
+        const decodedHistory = JSON.parse(new TextDecoder().decode(raw)) as HistoryItem;
+        if (!decodedHistory.id || !decodedHistory.config || !decodedHistory.contexts || !decodedHistory.date || !decodedHistory.title) {
+            showNotification('An error when importing the file: The json is in invalid format');
+            return;
+        }
+        // console.log(decodedHistory);
+        decodedHistory.id = historyItems.value.length;
+        historyItems.value.push(decodedHistory);
+        const store = await Store.load('store.json');
+        const history: HistoryItem[] = await store.get('history') || [];
+        history.push(decodedHistory);
+        await store.set('history', history);
+    }
+}
+
 function setTitle(title: string) {
     const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
     titleElement.innerText = title;
@@ -686,7 +733,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             <div v-if="showHistory || showConfig" class="fixed inset-0 bg-black/40 z-40" @click="panelClose"></div>
         </Transition>
         <History :isVisible="showHistory" :historyItems="historyItems" @close="panelClose" @load="loadHistoryToApp"
-            @delete="deleteHistoryItem" @new-conversation="createNewConversation" />
+            @delete="deleteHistoryItem" @export="exportHistoryItem" @import="importHistoryItem" @new-conversation="createNewConversation" />
         <UserConfig :isVisible="showConfig" v-model:globalSystemPrompt="globalSystemPrompt"
             v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt"
             v-model:isFirstMessageSent="isFirstMessageSent" v-model:bearerToken="bearerToken" @close="panelClose" />
@@ -695,9 +742,9 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
         <div v-show="!isGivenOptions"
             class="fixed bottom-0 left-0 right-0 bg-indigo-50 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
             <!-- 左侧按钮容器 -->
-            <div class="w-3/4 flex space-x-3">
+            <div class="w-3/4 flex space-x-3 ml-3">
                 <button @click="showHistory = true, loadHistoryItems()"
-                    class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group">
+                    class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                         stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:stroke-indigo-500 transition-colors">
                         <circle cx="12" cy="12" r="10"></circle>
@@ -714,7 +761,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 <div class="flex space-x-3">
                     <button @click="sendMsg" :disabled="isSending"
                         :class="isSending ? 'bg-slate-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-sm hover:shadow-md'"
-                        class="text-white px-5 py-3 rounded-xl transition-all duration-200 flex items-center justify-center whitespace-nowrap font-medium">
+                        class="text-white px-5 py-3 rounded-xl transition-all duration-200 flex items-center justify-center whitespace-nowrap font-medium cursor-pointer">
                         <svg v-if="!isSending" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
@@ -725,9 +772,9 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             </div>
 
             <!-- 右侧按钮容器 -->
-            <div class="w-3/4 flex justify-end">
+            <div class="w-3/4 flex justify-end mr-3">
                 <button @click="showConfig = true"
-                    class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group">
+                    class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                         stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:stroke-indigo-500 transition-colors">
                         <circle cx="12" cy="12" r="3"></circle>

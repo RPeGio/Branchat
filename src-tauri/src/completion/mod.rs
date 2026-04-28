@@ -31,58 +31,60 @@ pub async fn stream_chat(
     app: AppHandle,
     key: String,
     contexts: Vec<MessageContext>,
-    model_config: UserConfig
+    model_config: UserConfig,
 ) -> Result<(), String> {
-    if key.is_empty() { return Err("Bearer token is required!".to_string()); }
+    if key.is_empty() {
+        return Err("Bearer token is required!".to_string());
+    }
 
     let client = reqwest::Client::new();
-    
+
     println!("Sending request to DeepSeek API...");
-//     app.emit("completion-chunk", "
-// # 标题1
-// ## 标题2
+    //     app.emit("completion-chunk", "
+    // # 标题1
+    // ## 标题2
 
-// 这是一个段落，包含**粗体**和*斜体*文本。
+    // 这是一个段落，包含**粗体**和*斜体*文本。
 
-// - 无序列表项1
-// - 无序列表项2
+    // - 无序列表项1
+    // - 无序列表项2
 
-// 1. 有序列表项1
-// 2. 有序列表项2
+    // 1. 有序列表项1
+    // 2. 有序列表项2
 
-// > 这是一个引用块
+    // > 这是一个引用块
 
-// `行内代码`
+    // `行内代码`
 
-// # 数学公式测试
+    // # 数学公式测试
 
-// 行内公式：$E = mc^2$
+    // 行内公式：$E = mc^2$
 
-// 块级公式：
-// $$
-// \\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}
-// $$
+    // 块级公式：
+    // $$
+    // \\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}
+    // $$
 
-// 转义括号公式：\\(a^2 + b^2 = c^2\\) 和 \\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]
+    // 转义括号公式：\\(a^2 + b^2 = c^2\\) 和 \\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]
 
-// # GFM扩展语法测试
+    // # GFM扩展语法测试
 
-// ## 表格
+    // ## 表格
 
-// | 姓名 | 年龄 | 城市 |
-// | ---- | ---- | ---- |
-// | 张三 | 25   | 北京 |
-// | 李四 | 30   | 上海 |
+    // | 姓名 | 年龄 | 城市 |
+    // | ---- | ---- | ---- |
+    // | 张三 | 25   | 北京 |
+    // | 李四 | 30   | 上海 |
 
-// ## 删除线
+    // ## 删除线
 
-// ~~这是删除的文本~~
+    // ~~这是删除的文本~~
 
-// ## 任务列表
+    // ## 任务列表
 
-// - [x] 已完成任务
-// - [ ] 未完成任务
-//     ").unwrap();
+    // - [x] 已完成任务
+    // - [ ] 未完成任务
+    //     ").unwrap();
 
     let response = client
         .post("https://api.deepseek.com/chat/completions")
@@ -108,14 +110,15 @@ pub async fn stream_chat(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    
+
     if response.status().to_string() != String::from("200 OK") {
         return Err(format!("{}", response.status().to_string()));
     }
-    app.emit("completion-status", response.status().to_string()).unwrap();
+    app.emit("completion-status", response.status().to_string())
+        .unwrap();
 
     let mut stream = response.bytes_stream();
-    
+
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| e.to_string())?;
         // 将二进制chunk转换为字符串（SSE格式）
@@ -130,7 +133,9 @@ pub async fn stream_chat(
                         break;
                     } else {
                         let parsed_data: serde_json::Value = serde_json::from_str(data).unwrap();
-                        if let Some(content) = parsed_data["choices"][0]["delta"]["content"].as_str() {
+                        if let Some(content) =
+                            parsed_data["choices"][0]["delta"]["content"].as_str()
+                        {
                             if !content.is_empty() {
                                 // print!("{}", content);
                                 // std::io::stdout().flush().unwrap();
@@ -147,8 +152,10 @@ pub async fn stream_chat(
 
 #[tauri::command]
 pub async fn balance(app: AppHandle, key: String) -> Result<(), String> {
-    if key.is_empty() { return Err("Bearer token is required!".to_string()); }
-    
+    if key.is_empty() {
+        return Err("Bearer token is required!".to_string());
+    }
+
     let client = reqwest::Client::new();
 
     println!("Requesting for balance...");
@@ -164,14 +171,17 @@ pub async fn balance(app: AppHandle, key: String) -> Result<(), String> {
     if let Ok(res) = response.text().await {
         // println!("{:?}", res);
         let body: serde_json::Value = serde_json::from_str(&res).map_err(|e| e.to_string())?;
-        
+
         if let None = body["error"].as_null() {
-            return Err(format!("{}.\nError type: {}", body["error"]["message"], body["error"]["type"]));
+            return Err(format!(
+                "{}.\nError type: {}",
+                body["error"]["message"], body["error"]["type"]
+            ));
         }
 
         let [mut balance, mut currency] = [String::new(), String::new()];
         let mut available: bool = false;
-        
+
         if let Some(str) = body["is_available"].as_bool() {
             available = str;
         }
@@ -195,14 +205,19 @@ pub async fn balance(app: AppHandle, key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn title_generation(key: String, contexts: Vec<MessageContext>) -> Result<String, String> {
-    if key.is_empty() { return Err("Bearer token is required!".to_string()); }
+pub async fn title_generation(
+    key: String,
+    contexts: Vec<MessageContext>,
+) -> Result<String, String> {
+    if key.is_empty() {
+        return Err("Bearer token is required!".to_string());
+    }
     let client = reqwest::Client::new();
 
     // println!("{:#?}", contexts);
-    
+
     println!("Sending title generation request to DeepSeek API...");
-    
+
     let response = client
         .post("https://api.deepseek.com/chat/completions")
         .header("Authorization", format!("Bearer {}", key))
@@ -224,7 +239,7 @@ pub async fn title_generation(key: String, contexts: Vec<MessageContext>) -> Res
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    
+
     if response.status().to_string() != String::from("200 OK") {
         return Err(format!("{}", response.status().to_string()));
     }
@@ -233,9 +248,12 @@ pub async fn title_generation(key: String, contexts: Vec<MessageContext>) -> Res
     if let Ok(res) = response.text().await {
         // println!("{:?}", res);
         let body: serde_json::Value = serde_json::from_str(&res).map_err(|e| e.to_string())?;
-        
+
         if let None = body["error"].as_null() {
-            return Err(format!("{}.\nError type: {}", body["error"]["message"], body["error"]["type"]));
+            return Err(format!(
+                "{}.\nError type: {}",
+                body["error"]["message"], body["error"]["type"]
+            ));
         }
 
         if let Some(title) = body["choices"][0]["message"]["content"].as_str() {

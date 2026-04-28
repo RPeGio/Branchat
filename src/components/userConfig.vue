@@ -66,7 +66,7 @@ defineExpose({
                 v-if="props.isVisible" @click.stop>
                 <div class="flex justify-between items-center mb-6">
                     <h2 class="text-lg font-semibold text-slate-800">用户配置</h2>
-                    <button @click="closeConfig" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 text-xl">
+                    <button @click="closeConfig" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 text-xl cursor-pointer">
                         &times;
                     </button>
                 </div>
