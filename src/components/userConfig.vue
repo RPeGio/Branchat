@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { Store } from '@tauri-apps/plugin-store';
 
 import type { ConfigItem } from '../data/types';
 
@@ -30,25 +31,19 @@ const config = defineModel<ConfigItem>('userConfig', {
     })
 });
 const isFirstMessageSent = defineModel<boolean>('isFirstMessageSent');
-// const { systemPrompt, temperature, maxTokens, topP, frequencyPenalty } = toRefs(config.value as ConfigItem);
+const bearerToken = defineModel<string>('bearerToken', { default: '' });
+const tokenDisplayForm = ref<string>('password');
 
-// 监听config变化，便于调试
-// watch(config, (newValue, oldValue) => {
-//     console.log('config changed:', { oldValue, newValue });
-// }, { deep: true, immediate: true });
+watch(bearerToken, async (newToken, oldToken) => {
+    if (newToken != oldToken) {
+        const store = await Store.load('store.json');
+        await store.set('bearerToken', newToken);
+    }
+});
 
-// // 监听组件可见性变化，检查config状态
-// watch(() => props.isVisible, (isVisible) => {
-//     if (isVisible) {
-//         console.log('UserConfig became visible, config:', config.value);
-//     }
-// });
-
-// 判断当前对话系统提示词是否应该被锁定
-// const isCurrentPromptLocked = computed(() => {
-//     // 一旦当前对话系统提示词被设置（非空），就永久锁定
-//     return config.value.systemPrompt.trim() !== '';
-// });
+const toggleTokenVisibility = () => {
+    tokenDisplayForm.value = tokenDisplayForm.value === 'password' ? 'text' : 'password';
+};
 
 // 关闭配置面板
 const closeConfig = () => {
@@ -190,6 +185,34 @@ defineExpose({
                     </div>
                 </div>
 
+                <!-- API Token 配置 -->
+                <div class="mb-8">
+                    <h3 class="text-base font-semibold text-slate-700 mb-4 flex items-center">
+                        <span class="w-1 h-4 bg-indigo-500 rounded-full mr-2"></span>
+                        API Token 配置
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-sm font-medium text-slate-600 block mb-1.5">Deepseek Bearer Token</label>
+                            <div class="flex space-x-2">
+                                <input :type="tokenDisplayForm" v-model="bearerToken"
+                                    class="flex-1 px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 text-xs bg-slate-50 text-slate-700 placeholder-slate-400"
+                                    placeholder="输入您的 API Token" />
+                                <button @click="toggleTokenVisibility"
+                                    class="shrink-0 px-3 py-2 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 hover:text-slate-700 transition-all duration-200 text-sm font-medium">
+                                    <template v-if="tokenDisplayForm === 'password'">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    </template>
+                                    <template v-else>
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                    </template>
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">修改后将自动保存</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 指令列表指南 -->
                 <div class="mb-6">
                     <h3 class="text-base font-semibold text-slate-700 mb-4 flex items-center">
@@ -198,8 +221,6 @@ defineExpose({
                     </h3>
                     <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
                         <ul class="list-disc pl-5 space-y-2 text-sm text-slate-600">
-                            <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/displayToken</code> 显示当前 API Token</li>
-                            <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/hideToken</code> 隐藏当前 API Token</li>
                             <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/balance</code> 查询当前API Token余额</li>
                             <li><code class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">/clearHistory</code> 清空所有历史对话记录</li>
                         </ul>

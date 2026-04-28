@@ -29,9 +29,7 @@ const userConfig = ref<ConfigItem>({
 const currentId = ref<number | null>(null);
 const isSending = ref<boolean>(false);
 const markdownRawLines = ref<string>('');
-const isTokenVisible = ref<boolean>(false);
 const bearerToken = ref<string>('');
-const tokenDisplayForm = ref<string>('password');
 const currentCharacter = ref<string | null>(null);
 const defaultSystemPrompt = '你是一个得力的助手';
 const globalSystemPrompt = ref<string>(`${defaultSystemPrompt}`);
@@ -482,6 +480,27 @@ function createNewConversation() {
     setTitle('Branchat');
 }
 
+async function deleteHistoryItem(item: HistoryItem) {
+    // 确认删除
+    showConfirm(`确认删除对话 "${item.title}" 吗？`).then(async (confirmed) => {
+        if (confirmed) {
+            if (item.id === currentId.value) {
+                currentId.value = null;
+                createNewConversation();
+            }
+            const newHistory = historyItems.value.filter(h => h.id !== item.id);
+            for (let i = 0; i < newHistory.length; i++) {
+                newHistory[i].id = i;
+            }
+            historyItems.value = newHistory;
+            const store = await Store.load('store.json');
+            await store.set('history', newHistory);
+            console.log(newHistory);
+            // updateHistory();
+        }
+    });
+}
+
 function setTitle(title: string) {
     const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
     titleElement.innerText = title;
@@ -494,18 +513,6 @@ async function sendMsg() {
     if (!userInput) return;
     
     // 处理命令
-    if (userInput == '/displayToken') {
-        tokenDisplayForm.value = "text";
-        emptyInput();
-        return;
-    }
-
-    if (userInput == '/hideToken') {
-        tokenDisplayForm.value = "password";
-        emptyInput();
-        return;
-    }
-
     if (userInput == '/balance') {
         await invoke("balance", {
             key: bearerToken.value,
@@ -548,15 +555,6 @@ async function sendMsg() {
     // 发送消息到AI
     await sendMessageToAI(userInput);
 }
-
-watch(bearerToken, async (newToken, oldToken) => {
-    if (newToken != oldToken) {
-        const store = await Store.load('store.json');
-        await store.set('bearerToken', newToken);
-    }
-});
-
-
 
 listen("completion-status", (event) => {
     console.log('Completion status:', event.payload || event);
@@ -688,23 +686,10 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             <div v-if="showHistory || showConfig" class="fixed inset-0 bg-black/40 z-40" @click="panelClose"></div>
         </Transition>
         <History :isVisible="showHistory" :historyItems="historyItems" @close="panelClose" @load="loadHistoryToApp"
-            @new-conversation="createNewConversation" />
+            @delete="deleteHistoryItem" @new-conversation="createNewConversation" />
         <UserConfig :isVisible="showConfig" v-model:globalSystemPrompt="globalSystemPrompt"
             v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt"
-            v-model:isFirstMessageSent="isFirstMessageSent" @close="panelClose" />
-
-        <!-- Token 输入区域 - 可展开/收起 -->
-        <div class="fixed bottom-25 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-slate-200 p-4 w-full z-10 opacity-100 h-auto min-h-15 shadow-md"
-            v-if="isTokenVisible">
-            <div class="w-3/4 mx-auto flex flex-col items-center">
-                <div class="w-full flex items-center space-x-3">
-                    <label class="text-sm font-medium text-slate-600 whitespace-nowrap">Deepseek Bearer Token:</label>
-                    <input :type="tokenDisplayForm" v-model="bearerToken"
-                        class="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 text-sm bg-slate-50"
-                        placeholder="输入您的 API Token" />
-                </div>
-            </div>
-        </div>
+            v-model:isFirstMessageSent="isFirstMessageSent" v-model:bearerToken="bearerToken" @close="panelClose" />
 
         <!-- 输入区域 - 固定在底部 -->
         <div v-show="!isGivenOptions"
@@ -723,12 +708,6 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 
             <!-- 中间输入框和发送按钮 -->
             <div class="absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
-                <button @click="isTokenVisible = !isTokenVisible"
-                    class="bg-slate-100 text-slate-600 px-4 py-3 rounded-xl hover:bg-slate-200 hover:text-slate-700 transition-all duration-200 flex items-center justify-center text-sm whitespace-nowrap font-medium shadow-sm">
-                    <span v-if="isTokenVisible">隐藏 Token</span>
-                    <span v-else>显示 Token</span>
-                </button>
-
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
                     class="w-lg px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 bg-slate-50 placeholder-slate-400" />
 
