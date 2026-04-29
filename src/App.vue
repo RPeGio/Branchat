@@ -5,13 +5,13 @@ import UserConfig from './components/UserConfig.vue';
 import OptionSelection from './components/OptionSelection.vue';
 import Notification from './components/Notification.vue';
 import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem, MessageItem } from './data/types'
+import { models } from './data/types';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Store } from '@tauri-apps/plugin-store';
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { BaseDirectory, create, readFile } from '@tauri-apps/plugin-fs'
 import { processMarkdown } from './utils/markdownRenderer/processor';
-import { decode } from 'node:punycode';
 
 const showHistory = ref(false);
 const showConfig = ref(false);
@@ -52,6 +52,7 @@ const options = ref<OptionItem>({
 const OPTION_NEEDED = '@*@';
 const OPTION_NOT_NEEDED = '@@@';
 const OPTION_REGEX = new RegExp(`((?:${OPTION_NOT_NEEDED}|${OPTION_NEEDED.replace(/\*/g, '\\*')})[\\s\\S]*)$`);
+const model = ref<models>(models.pro);
 
 const messages = ref<MessageItem[]>([]);
 let messageIdCounter = 0;
@@ -286,10 +287,12 @@ async function sendMessageToAI(userInput: string) {
     currentCharacter.value = 'user';
     isSending.value = true;
     
+    console.log(model.value);
     await invoke('stream_chat', {
         key: bearerToken.value,
         contexts: contexts,
         modelConfig: modelConfig,
+        model: model.value,
     }).then(async () => {
         // 处理AI响应后的逻辑（与send_msg函数中的相同）
         const finalContexts = collectContexts();
@@ -506,6 +509,8 @@ async function deleteHistoryItem(item: HistoryItem) {
 
 async function exportHistoryItem(item: HistoryItem) {
     const path = await save({
+        // title: `${item.title}-${item.date}`,
+        title: '导出对话至',
         filters: [
             {
                 name: 'AIChat History Records',
@@ -699,7 +704,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center select-none">
                 <img src="/icons/icon.png" draggable="false" alt="Branchat" class="w-36 h-36 mb-5 opacity-90" />
                 <h1 class="text-4xl font-bold text-slate-600 tracking-wide mb-2.5">&gt;_Branchat_&lt;</h1>
-                <p class="text-lg text-slate-400 font-medium">基于Deepseek v4 Pro的分支交互式AIChat开源桌面应用</p>
+                <p class="text-lg text-slate-400 font-medium">基于Deepseek v4的分支交互式AIChat开源桌面应用</p>
             </div>
 
             <!-- 使用v-for渲染消息列表 -->
@@ -735,7 +740,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
         <History :isVisible="showHistory" :historyItems="historyItems" @close="panelClose" @load="loadHistoryToApp"
             @delete="deleteHistoryItem" @export="exportHistoryItem" @import="importHistoryItem" @new-conversation="createNewConversation" />
         <UserConfig :isVisible="showConfig" v-model:globalSystemPrompt="globalSystemPrompt"
-            v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt"
+            v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt" v-model:model="model"
             v-model:isFirstMessageSent="isFirstMessageSent" v-model:bearerToken="bearerToken" @close="panelClose" />
 
         <!-- 输入区域 - 固定在底部 -->

@@ -32,6 +32,7 @@ pub async fn stream_chat(
     key: String,
     contexts: Vec<MessageContext>,
     model_config: UserConfig,
+    model: String,
 ) -> Result<(), String> {
     if key.is_empty() {
         return Err("Bearer token is required!".to_string());
@@ -99,7 +100,7 @@ pub async fn stream_chat(
                         "role": ctx.role,
                     })
                 }).collect::<Vec<_>>(),
-            "model": "deepseek-v4-pro",
+            "model": format!("deepseek-v4-{}", model),
             "thinking": { "type": "disabled" },
             "stream": true,
             "max_tokens": model_config.max_tokens,
@@ -231,10 +232,10 @@ pub async fn title_generation(
                         "role": ctx.role,
                     })
                 }).collect::<Vec<_>>(),
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "stream": false,
-            "max_tokens": 2000,
-            "temperature": 0.7
+            "max_tokens": 100,
+            "temperature": 0.5
         }))
         .send()
         .await

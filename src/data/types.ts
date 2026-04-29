@@ -54,3 +54,8 @@ export interface MessageItem {
     option?: OptionItem,
     selection?: 0 | 1,
 }
+
+export enum models {
+    pro = 'pro',
+    flash = 'flash',
+}
