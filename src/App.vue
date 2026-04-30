@@ -4,7 +4,12 @@ import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
 import OptionSelection from './components/OptionSelection.vue';
 import Notification from './components/Notification.vue';
+import Snackbar from './components/Snackbar.vue';
+import { useSnackbar } from './utils/useSnackbar';
+const { snackbarMessage, snackbarVisible, showSnackbar, closeSnackbar } = useSnackbar()
+
 import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem, MessageItem } from './data/types'
+
 import { models } from './data/types';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -122,6 +127,7 @@ onBeforeMount(async () => {
     const globalConfig = await store.get('globalUserConfig') as GlobalUserConfig;
     if (globalConfig) {
         globalSystemPrompt.value = globalConfig.globalSystemPrompt;
+        model.value = globalConfig.globalmodel;
     }
 })
 
@@ -129,6 +135,7 @@ onBeforeMount(async () => {
 const panelClose = async () => {
     await (await Store.load('store.json')).set('globalUserConfig', {
         globalSystemPrompt: globalSystemPrompt.value,
+        globalmodel: model.value
     } as GlobalUserConfig),
     showHistory.value = false;
     showConfig.value = false;
@@ -438,6 +445,7 @@ async function updateHistory(title?: string) {
         });
         currentId.value = historyLength;
     } else {
+        if (currentHistoryIndex === -1) return;
         history[currentHistoryIndex].config = modelConfig;
         history[currentHistoryIndex].contexts = contexts;
     }
@@ -524,6 +532,7 @@ async function exportHistoryItem(item: HistoryItem) {
         const encodedHistory = new TextEncoder().encode(JSON.stringify(item));
         await file.write(encodedHistory);
         await file.close();
+        showSnackbar('导出对话成功！');
     }
 }
 
@@ -550,6 +559,7 @@ async function importHistoryItem() {
         const history: HistoryItem[] = await store.get('history') || [];
         history.push(decodedHistory);
         await store.set('history', history);
+        showSnackbar('导入对话成功！');
     }
 }
 
@@ -804,6 +814,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
         />
 
         <Notification :visible="notificationVisible" :message="notificationMessage" :mode="notificationMode" @close="closeNotification" @confirm="onNotificationConfirm" @cancel="onNotificationCancel" />
+        <Snackbar :message="snackbarMessage" :visible="snackbarVisible" @close="closeSnackbar" />
     </div>
 </template>
 

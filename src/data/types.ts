@@ -21,6 +21,7 @@ export interface ContextItem {
 
 export interface GlobalUserConfig {
     globalSystemPrompt: string,
+    globalmodel: models,
 }
 
 export interface ConfigItem {
