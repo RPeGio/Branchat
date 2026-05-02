@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeMount, ref, watch, nextTick } from 'vue';
+import { onBeforeMount, ref, watch, nextTick, computed } from 'vue';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
 import OptionSelection from './components/OptionSelection.vue';
@@ -34,7 +34,16 @@ const userConfig = ref<ConfigItem>({
     topP: defaultUserConfig.topP,
     frequencyPenalty: defaultUserConfig.frequencyPenalty
 });
-const currentId = ref<number | null>(null);
+const historyItems = ref<HistoryItem[]>([]);
+const historyCount = ref(0);
+const currentId = computed(() => {
+    const id = rawCurrentId.value;
+    if (id === null || id === -1) return historyCount.value;
+    const existsInHistory = historyItems.value.some(h => h.id === id);
+    if (!existsInHistory) return historyCount.value;
+    return id;
+});
+const rawCurrentId = ref<number | null>(null);
 const isSending = ref<boolean>(false);
 const markdownRawLines = ref<string>('');
 const bearerToken = ref<string>('');
@@ -129,6 +138,10 @@ onBeforeMount(async () => {
         globalSystemPrompt.value = globalConfig.globalSystemPrompt;
         model.value = globalConfig.globalmodel;
     }
+
+    const savedHistory: HistoryItem[] = await store.get('history') || [];
+    historyItems.value = savedHistory;
+    historyCount.value = savedHistory.length;
 })
 
 // 处理背景遮罩点击事件
@@ -185,7 +198,7 @@ const loadHistoryToApp = async (item: HistoryItem) => {
         }
     }
     
-    currentId.value = item.id;
+    rawCurrentId.value = item.id;
     if (title) {
         const titleElement = document.getElementById('titlebar-title-text') as HTMLElement;
         titleElement.innerText = title;
@@ -320,12 +333,13 @@ async function sendMessageToAI(userInput: string) {
                 if (lastAiMsg) lastAiMsg.option = extractedOption;
             }
             
-            invoke('title_generation', {
+            await invoke('title_generation', {
                 key: bearerToken.value,
                 contexts: finalContexts,
             }).then(async (res) => {
-                setTitle(res as string);
-                await updateHistory(res as string);
+                const title = (res as string) || '新对话';
+                setTitle(title);
+                await updateHistory(title);
             })
         } else {
             const extractedOption = extractOptions(options.value.raw);
@@ -443,7 +457,8 @@ async function updateHistory(title?: string) {
             'config': modelConfig,
             'contexts': contexts,
         });
-        currentId.value = historyLength;
+        historyCount.value = history.length;
+        rawCurrentId.value = historyLength;
     } else {
         if (currentHistoryIndex === -1) return;
         history[currentHistoryIndex].config = modelConfig;
@@ -455,12 +470,14 @@ async function updateHistory(title?: string) {
 async function clearHistory() {
     const store = await Store.load('store.json');
     await store.set('history', []);
+    historyItems.value = [];
+    historyCount.value = 0;
 }
 
-const historyItems = ref<HistoryItem[]>([]);
 async function loadHistoryItems() {
     const store = await Store.load('store.json');
     historyItems.value = await store.get('history') || [];
+    historyCount.value = historyItems.value.length;
 }
 
 function backtrace(messageId: number) {
@@ -491,6 +508,7 @@ function createNewConversation() {
         frequencyPenalty: defaultUserConfig.frequencyPenalty
     };
     isFirstMessageSent.value = false;
+    rawCurrentId.value = null;
     setTitle('Branchat');
 }
 
@@ -499,7 +517,7 @@ async function deleteHistoryItem(item: HistoryItem) {
     showConfirm(`确认删除对话 "${item.title}" 吗？`).then(async (confirmed) => {
         if (confirmed) {
             if (item.id === currentId.value) {
-                currentId.value = null;
+                rawCurrentId.value = null;
                 createNewConversation();
             }
             const newHistory = historyItems.value.filter(h => h.id !== item.id);
@@ -507,6 +525,7 @@ async function deleteHistoryItem(item: HistoryItem) {
                 newHistory[i].id = i;
             }
             historyItems.value = newHistory;
+            historyCount.value = newHistory.length;
             const store = await Store.load('store.json');
             await store.set('history', newHistory);
             console.log(newHistory);
