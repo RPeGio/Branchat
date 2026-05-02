@@ -534,6 +534,20 @@ async function deleteHistoryItem(item: HistoryItem) {
     });
 }
 
+async function handleUpdateTitle(item: HistoryItem, newTitle: string) {
+    const store = await Store.load('store.json');
+    const history: HistoryItem[] = await store.get('history') || [];
+    const idx = history.findIndex(h => h.id === item.id);
+    if (idx !== -1) {
+        history[idx].title = newTitle;
+        await store.set('history', history);
+        historyItems.value = history;
+        if (currentId.value === item.id) {
+            setTitle(newTitle);
+        }
+    }
+}
+
 async function exportHistoryItem(item: HistoryItem) {
     const path = await save({
         // title: `${item.title}-${item.date}`,
@@ -767,7 +781,8 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             <div v-if="showHistory || showConfig" class="fixed inset-0 bg-black/40 z-40" @click="panelClose"></div>
         </Transition>
         <History :isVisible="showHistory" :historyItems="historyItems" @close="panelClose" @load="loadHistoryToApp"
-            @delete="deleteHistoryItem" @export="exportHistoryItem" @import="importHistoryItem" @new-conversation="createNewConversation" />
+            @delete="deleteHistoryItem" @export="exportHistoryItem" @import="importHistoryItem"
+            @new-conversation="createNewConversation" @update-title="handleUpdateTitle" />
         <UserConfig :isVisible="showConfig" v-model:globalSystemPrompt="globalSystemPrompt"
             v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt" v-model:model="model"
             v-model:isFirstMessageSent="isFirstMessageSent" v-model:bearerToken="bearerToken" @close="panelClose" />
