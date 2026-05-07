@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useHistoryStore } from '../stores/history';
 import type { HistoryItem } from '../data/types'
+
+const historyStore = useHistoryStore();
+const { historyItems } = storeToRefs(historyStore);
 
 const props = defineProps<{
     isVisible: boolean;
-    historyItems: HistoryItem[];
 }>();
 const emit = defineEmits<{ 
     close: [];
@@ -16,20 +20,16 @@ const emit = defineEmits<{
     'update-title': [item: HistoryItem, newTitle: string];
 }>();
 
-
 const closeHistory = () => {
     emit('close');
 };
 
-
-// 新建对话
 const createNewConversation = () => {
     emit('new-conversation');
     closeHistory();
 };
 
-// 加载选中的历史记录
-const loadHistoryToApp = (item: HistoryItem) => {
+const loadItem = (item: HistoryItem) => {
     emit('load', item);
     closeHistory();
 };
@@ -51,7 +51,7 @@ function startEdit(item: HistoryItem) {
 
 function saveEdit() {
     if (editingId.value === null) return;
-    const item = props.historyItems.find(h => h.id === editingId.value);
+    const item = historyItems.value.find(h => h.id === editingId.value);
     if (item && editingTitle.value.trim()) {
         emit('update-title', item, editingTitle.value.trim());
     }
@@ -95,15 +95,15 @@ function onEditKeydown(e: KeyboardEvent) {
                 </div>
 
                 <div class="space-y-2">
-                    <div v-for="item in [...props.historyItems].reverse()" :key="item.id"
+                    <div v-for="item in [...historyItems].reverse()" :key="item.id"
                         class="hover:*:first:w-[72%] relative"
                         @mouseenter="hoverId = item.id"
                         @mouseleave="hoverId = -1">
                         <div
                             class="relative w-full rounded-xl border border-slate-100 bg-white flex items-center px-4 py-3 cursor-pointer shadow-sm hover:border-indigo-200 hover:shadow-md transition-all duration-200 group z-10"
-                            @click="loadHistoryToApp(item)">
+                            @click="loadItem(item)">
                             <div class="flex-1 min-w-0">
-                            <div v-if="editingId !== item.id" class="truncate text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors" @click.stop>{{ item.title }}</div>
+                            <div v-if="editingId !== item.id" class="truncate text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">{{ item.title }}</div>
                             <input v-else ref="editInput" v-model="editingTitle" @blur="onEditBlur" @keydown="onEditKeydown" @click.stop
                                 class="w-full px-2 py-0.5 text-sm font-medium text-slate-700 bg-indigo-50 border border-indigo-300 rounded-md outline-none focus:ring-2 focus:ring-indigo-400" />
                         </div>

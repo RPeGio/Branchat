@@ -22,7 +22,7 @@
 - **桌面应用**：Tauri 2
 - **样式库**：Tailwind CSS 4
 - **Markdown 处理**：Unified.js + Remark + Rehype + KaTeX
-- **状态管理**：Vue 3 Composition API
+- **状态管理**：Pinia
 - **存储**：Tauri Plugin Store
 
 ## 安装与运行

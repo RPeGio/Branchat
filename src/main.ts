@@ -1,4 +1,5 @@
 import { createApp } from "vue";
+import { createPinia } from "pinia"
 import './style.css';
 import App from "./App.vue";
 import { Window } from '@tauri-apps/api/window';
@@ -18,4 +19,4 @@ document
         appWindow.close()
     });
 
-createApp(App).mount("#app");
+createApp(App).use(createPinia()).mount("#app");

@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { onBeforeMount, ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, onBeforeMount } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useConfigStore, defaultSystemPrompt } from './stores/config';
+import { useHistoryStore } from './stores/history';
+import { useOptionStore } from './stores/option';
 import History from './components/History.vue';
 import UserConfig from './components/UserConfig.vue';
 import OptionSelection from './components/OptionSelection.vue';
@@ -8,65 +12,36 @@ import Snackbar from './components/Snackbar.vue';
 import { useSnackbar } from './utils/useSnackbar';
 const { snackbarMessage, snackbarVisible, showSnackbar, closeSnackbar } = useSnackbar()
 
-import type { BalanceMessage, HistoryItem, ContextItem, GlobalUserConfig, ConfigItem, ModelParamsForServer, OptionItem, MessageItem } from './data/types'
+import type { BalanceMessage, HistoryItem, ContextItem, OptionItem, MessageItem } from './data/types'
 
-import { models } from './data/types';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { Store } from '@tauri-apps/plugin-store';
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { BaseDirectory, create, readFile } from '@tauri-apps/plugin-fs'
 import { processMarkdown } from './utils/markdownRenderer/processor';
 
-const showHistory = ref(false);
-const showConfig = ref(false);
-const defaultUserConfig: ConfigItem = {
-    systemPrompt: '',
-    temperature: 1,
-    maxTokens: 4000,
-    topP: 0.9,
-    frequencyPenalty: 0.5
-};
-const userConfig = ref<ConfigItem>({
-    systemPrompt: defaultUserConfig.systemPrompt,
-    temperature: defaultUserConfig.temperature,
-    maxTokens: defaultUserConfig.maxTokens,
-    topP: defaultUserConfig.topP,
-    frequencyPenalty: defaultUserConfig.frequencyPenalty
-});
-const historyItems = ref<HistoryItem[]>([]);
-const historyCount = ref(0);
-const currentId = computed(() => {
-    const id = rawCurrentId.value;
-    if (id === null || id === -1) return historyCount.value;
-    const existsInHistory = historyItems.value.some(h => h.id === id);
-    if (!existsInHistory) return historyCount.value;
-    return id;
-});
-const rawCurrentId = ref<number | null>(null);
+const configStore = useConfigStore();
+const historyStore = useHistoryStore();
+const optionStore = useOptionStore();
+
+const {
+    bearerToken, model, globalSystemPrompt, userConfig, isFirstMessageSent,
+} = storeToRefs(configStore);
+const {
+    historyItems, currentId, rawCurrentId, showHistory, showConfig,
+} = storeToRefs(historyStore);
+const {
+    isGivenOptions, startCollectingOptions, currentOptionList, options,
+} = storeToRefs(optionStore);
+
 const isSending = ref<boolean>(false);
 const markdownRawLines = ref<string>('');
-const bearerToken = ref<string>('');
 const currentCharacter = ref<string | null>(null);
-const defaultSystemPrompt = '你是一个得力的助手';
-const globalSystemPrompt = ref<string>(`${defaultSystemPrompt}`);
-const isFirstMessageSent = ref<boolean>(false); // 首条消息有没有被发送
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const autoScroll = ref<boolean>(true);
-const isGivenOptions = ref<boolean>(false);
-const startCollectingOptions = ref<boolean>(false);
-const currentOptionList = ref<(OptionItem | null)[]>([]);
-const options = ref<OptionItem>({
-    raw: null,
-    positive: null,
-    positiveExtraInput: false,
-    negative: null,
-    negativeExtraInput: false,
-});
 const OPTION_NEEDED = '@*@';
 const OPTION_NOT_NEEDED = '@@@';
 const OPTION_REGEX = new RegExp(`((?:${OPTION_NOT_NEEDED}|${OPTION_NEEDED.replace(/\*/g, '\\*')})[\\s\\S]*)$`);
-const model = ref<models>(models.pro);
 
 const messages = ref<MessageItem[]>([]);
 let messageIdCounter = 0;
@@ -118,40 +93,17 @@ const closeNotification = () => {
 };
 
 onBeforeMount(async () => {
-    const store = await Store.load('store.json', {
-        autoSave: true, defaults: {
-            'bearerToken': '',
-            'history': [],
-            'globalUserConfig': {
-                'globalSystemPrompt': `${defaultSystemPrompt}`,
-            }
-        }
-    });
-    bearerToken.value = await store.get('bearerToken') || '';
-    if (!bearerToken.value) {
-        bearerToken.value = import.meta.env.VITE_API_KEY || '';
-        await store.set('bearerToken', bearerToken.value);
-    }
-
-    const globalConfig = await store.get('globalUserConfig') as GlobalUserConfig;
-    if (globalConfig) {
-        globalSystemPrompt.value = globalConfig.globalSystemPrompt;
-        model.value = globalConfig.globalmodel;
-    }
-
-    const savedHistory: HistoryItem[] = await store.get('history') || [];
-    historyItems.value = savedHistory;
-    historyCount.value = savedHistory.length;
+    await configStore.loadFromStore();
+    await historyStore.loadFromStore();
 })
 
-// 处理背景遮罩点击事件
 const panelClose = async () => {
-    await (await Store.load('store.json')).set('globalUserConfig', {
-        globalSystemPrompt: globalSystemPrompt.value,
-        globalmodel: model.value
-    } as GlobalUserConfig),
-    showHistory.value = false;
-    showConfig.value = false;
+    if (showConfig.value) {
+        const modelConfig = configStore.getModelConfig();
+        await historyStore.saveCurrentConfig(modelConfig);
+    }
+    await configStore.saveGlobalConfig();
+    historyStore.panelClose();
 };
 
 const handleScroll = (event: Event): void => {
@@ -159,14 +111,12 @@ const handleScroll = (event: Event): void => {
     if (!el) return;
     
     const target = event.currentTarget as HTMLDivElement;
-    // console.log(target);
-    // console.log(target.scrollHeight, target.scrollTop, target.clientHeight);
     const isAtBottom: boolean = target.scrollHeight - target.scrollTop - target.clientHeight < 50;
     autoScroll.value = isAtBottom;
 };
 
 const loadHistoryToApp = async (item: HistoryItem) => {
-    currentOptionList.value = [];
+    optionStore.currentOptionList = [];
     messages.value = [];
     console.log('加载历史记录:', item);
     const title = item.title;
@@ -204,40 +154,19 @@ const loadHistoryToApp = async (item: HistoryItem) => {
         titleElement.innerText = title;
     }
     isFirstMessageSent.value = true;
-    const config: ConfigItem = {
+    userConfig.value = {
         systemPrompt: item.contexts[0].content || defaultSystemPrompt,
         temperature: item.config.temperature,
         maxTokens: item.config.max_tokens,
         topP: item.config.top_p,
-        frequencyPenalty: item.config.frequency_penalty
+        frequencyPenalty: item.config.frequency_penalty,
     };
-    userConfig.value = config;
 };
-
-function setCurrentSystemPrompt(): string {
-    if (!userConfig.value.systemPrompt) {
-        if (!globalSystemPrompt.value)
-            return defaultSystemPrompt;
-        return globalSystemPrompt.value;
-    }
-    return userConfig.value.systemPrompt;
-}
-
-function getModelConfig(userConfig: ConfigItem): ModelParamsForServer {
-    return {
-        temperature: userConfig.temperature,
-        max_tokens: userConfig.maxTokens,
-        top_p: userConfig.topP,
-        frequency_penalty: userConfig.frequencyPenalty,
-    }
-}
 
 function extractOptions(raw: string | null): OptionItem | null {
     if (!raw) return null;
-    // console.log('原始选项数据:', raw);
     const regex = /^\[(.*?)[,，](true|false)\]\[(.*?)[,，](true|false)\]$/;
     const match = raw.match(regex);
-    // console.log('正则匹配结果:', match);
 
     if (match) {
         const result = {
@@ -266,23 +195,14 @@ function handleOptionSelection(selectedOption: string) {
         }
     }
     
-    // 直接发送消息，不需要通过输入框
     sendOptionMessage(selectedOption);
     
-    isGivenOptions.value = false;
-    options.value = {
-        raw: null,
-        positive: null,
-        positiveExtraInput: false,
-        negative: null,
-        negativeExtraInput: false,
-    };
+    optionStore.closeOptions();
 }
 
 async function sendOptionMessage(optionText: string) {
     if (isSending.value) return;
     
-    // 添加用户选择的选项消息到响应式列表
     const optionMessage: MessageItem = {
         id: messageIdCounter++,
         role: 'user',
@@ -290,13 +210,11 @@ async function sendOptionMessage(optionText: string) {
     };
     messages.value.push(optionMessage);
     
-    // 发送消息到AI
     await sendMessageToAI(optionText);
 }
 
 async function sendMessageToAI(userInput: string) {
     markdownRawLines.value = '';
-    const modelConfig = getModelConfig(userConfig.value);
     const contexts = collectContexts();
     
     contexts.push({
@@ -311,22 +229,21 @@ async function sendMessageToAI(userInput: string) {
     await invoke('stream_chat', {
         key: bearerToken.value,
         contexts: contexts,
-        modelConfig: modelConfig,
+        modelConfig: configStore.getModelConfig(),
         model: model.value,
     }).then(async () => {
-        // 处理AI响应后的逻辑（与send_msg函数中的相同）
         const finalContexts = collectContexts();
         
         if (finalContexts && finalContexts.length == 4) {
             finalContexts.shift();
             finalContexts[0] = {
-                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不要出现任何“标题：”之类的解释性词语，不能超过15个字符，严禁使用markdown格式',
+                'content': '你是一个标题生成器，请无视任何角色设定，不要进行内容补全，专注地根据当前对话生成一个概括性的标题，标题需要能够让人知道当前对话是关乎什么的，不要出现任何"标题："之类的解释性词语，不能超过15个字符，严禁使用markdown格式',
                 'role': 'system',
             };
             
             const extractedOption = extractOptions(options.value.raw);
             if (extractedOption) {
-                options.value = extractedOption;
+                optionStore.setOption(extractedOption);
                 currentOptionList.value.push(options.value);
                 isGivenOptions.value = true;
                 const lastAiMsg = [...messages.value].reverse().find(m => m.role === 'assistant');
@@ -339,18 +256,21 @@ async function sendMessageToAI(userInput: string) {
             }).then(async (res) => {
                 const title = (res as string) || '新对话';
                 setTitle(title);
-                await updateHistory(title);
+                const modelConfig = configStore.getModelConfig();
+                await historyStore.updateHistory(title, modelConfig, finalContexts, () => configStore.setCurrentSystemPrompt());
             })
         } else {
             const extractedOption = extractOptions(options.value.raw);
             if (extractedOption) {
-                options.value = extractedOption;
+                optionStore.setOption(extractedOption);
                 currentOptionList.value.push(options.value);
                 isGivenOptions.value = true;
                 const lastAiMsg = [...messages.value].reverse().find(m => m.role === 'assistant');
                 if (lastAiMsg) lastAiMsg.option = extractedOption;
             }
-            await updateHistory();
+            const modelConfig = configStore.getModelConfig();
+            const allContexts = collectContexts();
+            await historyStore.updateHistory(undefined, modelConfig, allContexts, () => configStore.setCurrentSystemPrompt());
         }
     }).catch((err) => {
         showNotification(`An error occurs when sending message: ${err}`);
@@ -360,21 +280,14 @@ async function sendMessageToAI(userInput: string) {
 }
 
 function handleOptionClose() {
-    isGivenOptions.value = false;
-    options.value = {
-        raw: null,
-        positive: null,
-        positiveExtraInput: false,
-        negative: null,
-        negativeExtraInput: false,
-    };
+    optionStore.closeOptions();
 }
 
 function collectContexts(): ContextItem[] {
 
     const contexts: ContextItem[] = [
         {
-            'content': `${setCurrentSystemPrompt()}`,
+            'content': `${configStore.setCurrentSystemPrompt()}`,
             'role': 'system',
         },
         {
@@ -411,85 +324,18 @@ function emptyInput() {
     inputElement.value = '';
 }
 
-function formatDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = ('0' + (date.getMonth() + 1)).slice(-2);
-    const day = ('0' + date.getDate()).slice(-2);
-    return `${year}-${month}-${day}`;
-}
-
-async function updateHistory(title?: string) {
-    const store = await Store.load('store.json');
-    const history: HistoryItem[] = await store.get('history') || [];
-    const historyLength = history.length;
-    const currentHistoryIndex = history.findIndex(h => h.id === currentId.value);
-    const modelConfig = getModelConfig(userConfig.value); 
-
-    // 从响应式消息列表构建contexts
-    const contexts: ContextItem[] = [
-        {
-            'content': `${setCurrentSystemPrompt()}`,
-            'role': 'system',
-        },
-        {
-            'content': `请务必在正文输出结束后再开一行视情况按如下要求输出：如果你认为当前对话需要用户做出选择/判断，则在一个chunk内输出"${OPTION_NEEDED}"，然后换行，输出"[<正向选项>, true||false（如果需要用户输入补充细节则为true，否则为false）][<反向选项>， true||false（如果需要用户输入补充细节则为true，否则为false）]"（请务必积极使用这种格式！！！）；如果你认为不需要，则在一个chunk内输出"${OPTION_NOT_NEEDED}"。如果遇到需要解释复杂问题的情况，请将问题拆分成较小的子问题，然后依照前面的格式询问用户是否已理解。选项的字数最好不要超过10字，最多不得超过15字。你提供的选项将直接作为下一轮对话的输入，所以为了对话能通畅继续，务必将选项的文字写得承上启下。在遇到敏感内容时请不要添加任何的删除线`,
-            'role': 'system',
-        }
-    ];
-
-    // 添加所有用户和AI消息
-    messages.value.forEach(msg => {
-        if (msg.role === 'user' || msg.role === 'assistant') {
-            contexts.push({
-                role: msg.role,
-                content: msg.content,
-                option: msg.option,
-                selection: msg.selection
-            });
-        }
-    });
-
-    if (title) {
-        history.push({
-            'id': historyLength,
-            'title': title,
-            'date': formatDate(new Date(Date.now())),
-            'config': modelConfig,
-            'contexts': contexts,
-        });
-        historyCount.value = history.length;
-        rawCurrentId.value = historyLength;
-    } else {
-        if (currentHistoryIndex === -1) return;
-        history[currentHistoryIndex].config = modelConfig;
-        history[currentHistoryIndex].contexts = contexts;
-    }
-    await store.set('history', history);
-}
-
-async function clearHistory() {
-    const store = await Store.load('store.json');
-    await store.set('history', []);
-    historyItems.value = [];
-    historyCount.value = 0;
-}
-
-async function loadHistoryItems() {
-    const store = await Store.load('store.json');
-    historyItems.value = await store.get('history') || [];
-    historyCount.value = historyItems.value.length;
-}
-
 function backtrace(messageId: number) {
     showConfirm(`确认回溯至此消息吗？\n（回溯后将删除此条消息后面的所有消息，并且会重置此处选项选择）`).then((confirmed) => {
         if (confirmed) {
             const messageIndex = messages.value.findIndex(msg => msg.id === messageId) + 1;
             if (messageIndex !== -1) {
                 messages.value.splice(messageIndex, messages.value.length - messageIndex);
-                updateHistory();
+                const modelConfig = configStore.getModelConfig();
+                const contexts = collectContexts();
+                historyStore.updateHistory(undefined, modelConfig, contexts, () => configStore.setCurrentSystemPrompt());
                 if (messages.value[messageIndex - 1].option) {
                     isGivenOptions.value = true;
-                    options.value = messages.value[messageIndex - 1].option as OptionItem;
+                    optionStore.setOption(messages.value[messageIndex - 1].option as OptionItem);
                 } else {
                     isGivenOptions.value = false;
                 }
@@ -500,57 +346,26 @@ function backtrace(messageId: number) {
 
 function createNewConversation() {
     messages.value = [];
-    userConfig.value = {
-        systemPrompt: defaultUserConfig.systemPrompt,
-        temperature: defaultUserConfig.temperature,
-        maxTokens: defaultUserConfig.maxTokens,
-        topP: defaultUserConfig.topP,
-        frequencyPenalty: defaultUserConfig.frequencyPenalty
-    };
+    configStore.resetUserConfig();
     isFirstMessageSent.value = false;
     rawCurrentId.value = null;
     setTitle('Branchat');
 }
 
 async function deleteHistoryItem(item: HistoryItem) {
-    // 确认删除
     showConfirm(`确认删除对话 "${item.title}" 吗？`).then(async (confirmed) => {
         if (confirmed) {
             if (item.id === currentId.value) {
                 rawCurrentId.value = null;
                 createNewConversation();
             }
-            const newHistory = historyItems.value.filter(h => h.id !== item.id);
-            for (let i = 0; i < newHistory.length; i++) {
-                newHistory[i].id = i;
-            }
-            historyItems.value = newHistory;
-            historyCount.value = newHistory.length;
-            const store = await Store.load('store.json');
-            await store.set('history', newHistory);
-            console.log(newHistory);
-            // updateHistory();
+            await historyStore.deleteHistoryItem(item);
         }
     });
 }
 
-async function handleUpdateTitle(item: HistoryItem, newTitle: string) {
-    const store = await Store.load('store.json');
-    const history: HistoryItem[] = await store.get('history') || [];
-    const idx = history.findIndex(h => h.id === item.id);
-    if (idx !== -1) {
-        history[idx].title = newTitle;
-        await store.set('history', history);
-        historyItems.value = history;
-        if (currentId.value === item.id) {
-            setTitle(newTitle);
-        }
-    }
-}
-
 async function exportHistoryItem(item: HistoryItem) {
     const path = await save({
-        // title: `${item.title}-${item.date}`,
         title: '导出对话至',
         filters: [
             {
@@ -585,14 +400,17 @@ async function importHistoryItem() {
             showNotification('An error when importing the file: The json is in invalid format');
             return;
         }
-        // console.log(decodedHistory);
         decodedHistory.id = historyItems.value.length;
         historyItems.value.push(decodedHistory);
-        const store = await Store.load('store.json');
-        const history: HistoryItem[] = await store.get('history') || [];
-        history.push(decodedHistory);
-        await store.set('history', history);
+        await historyStore.saveHistoryToStore(historyItems.value);
         showSnackbar('导入对话成功！');
+    }
+}
+
+async function handleUpdateTitle(item: HistoryItem, newTitle: string) {
+    await historyStore.handleUpdateTitle(item, newTitle);
+    if (currentId.value === item.id) {
+        setTitle(newTitle);
     }
 }
 
@@ -607,7 +425,6 @@ async function sendMsg() {
     const userInput = inputElement?.value || null;
     if (!userInput) return;
     
-    // 处理命令
     if (userInput == '/balance') {
         await invoke("balance", {
             key: bearerToken.value,
@@ -619,7 +436,7 @@ async function sendMsg() {
     }
 
     if (userInput == '/clearHistory') {
-        await clearHistory().then(() => {
+        await historyStore.clearHistory().then(() => {
             showNotification('History cleared successfully');
         }).catch((err) => {
             showNotification(`An error occurs: ${err}`)
@@ -628,10 +445,8 @@ async function sendMsg() {
         return;
     }
     
-    // 清空输入框
     inputElement.value = '';
     
-    // 添加用户消息到响应式列表
     const userMessage: MessageItem = {
         id: messageIdCounter++,
         role: 'user',
@@ -639,7 +454,6 @@ async function sendMsg() {
     };
     messages.value.push(userMessage);
     
-    // 首次成功发送消息，触发系统提示词同步
     if (!isFirstMessageSent.value) {
         isFirstMessageSent.value = true;
         if (userConfig.value && (!userConfig.value.systemPrompt || userConfig.value.systemPrompt.trim() === '')) {
@@ -647,7 +461,6 @@ async function sendMsg() {
         }
     }
     
-    // 发送消息到AI
     await sendMessageToAI(userInput);
 }
 
@@ -661,9 +474,7 @@ listen("completion-chunk", async (event) => {
     markdownRawLines.value += payload;
     
     if (payload) {
-        // 检查是否是新的AI消息
         if (currentCharacter.value === 'assistant' && messages.value.length > 0 && messages.value[messages.value.length - 1].role !== 'assistant') {
-            // 创建新的AI消息
             const aiMessage: MessageItem = {
                 id: messageIdCounter++,
                 role: 'assistant',
@@ -671,11 +482,9 @@ listen("completion-chunk", async (event) => {
             };
             messages.value.push(aiMessage);
         } else if (messages.value.length > 0 && messages.value[messages.value.length - 1].role === 'assistant') {
-            // 更新最后一条AI消息
             const lastMessage = messages.value[messages.value.length - 1];
             lastMessage.content = markdownRawLines.value;
             
-            // 检查是否需要处理选项
             if (markdownRawLines.value.includes(OPTION_NEEDED) || markdownRawLines.value.includes(OPTION_NOT_NEEDED)) {
                 if (markdownRawLines.value.includes(OPTION_NEEDED)) {
                     if (startCollectingOptions.value) {
@@ -707,7 +516,6 @@ listen("completion-end", async (event) => {
     isSending.value = false;
     startCollectingOptions.value = false;
     
-    // 确保最后一条AI消息的HTML内容已更新
     if (messages.value.length > 0 && messages.value[messages.value.length - 1].role === 'assistant') {
         const lastMessage = messages.value[messages.value.length - 1];
         let cleanContent = lastMessage.content;
@@ -729,11 +537,9 @@ listen("balance", (event) => {
     showNotification(`当前api-key可用性：${infos.available}\n当前剩余余额：${infos.balance} ${infos.currency}`);
 });
 
-// 监听消息变化，自动滚动
 watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
     if (autoScroll.value) {
-        await nextTick(); // 等待 DOM 更新完成
-        // console.log('Auto-scrolling to bottom...');
+        await nextTick();
         const el = scrollContainer.value;
         if (el) el.scrollTop = el.scrollHeight;
     }
@@ -743,24 +549,20 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 <template>
     <div class="h-[calc(100vh-32px-102px)] bg-slate-100 flex flex-col">
         <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6" style="scroll-padding-bottom: 1rem;">
-            <!-- 开场界面 - 无消息时显示 -->
             <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center select-none">
                 <img src="/icons/icon.png" draggable="false" alt="Branchat" class="w-36 h-36 mb-5 opacity-90" />
                 <h1 class="text-4xl font-bold text-slate-600 tracking-wide mb-2.5">&gt;_Branchat_&lt;</h1>
                 <p class="text-lg text-slate-400 font-medium">基于Deepseek v4的分支交互式AIChat开源桌面应用</p>
             </div>
 
-            <!-- 使用v-for渲染消息列表 -->
             <div v-else class="space-y-5">
                 <div v-for="message in messages" :key="message.id" class="space-y-4">
-                    <!-- 用户消息 -->
                     <div v-if="message.role === 'user'" class="flex justify-end">
                         <div class="bg-indigo-600 text-white rounded-2xl rounded-br-md px-5 py-3 max-w-[70%] shadow-sm">
                             <div class="msg msg-user text-white select-text!">{{ message.content }}</div>
                         </div>
                     </div>
                     
-                    <!-- AI消息 -->
                     <div v-else-if="message.role === 'assistant'" class="flex justify-start" @mouseenter="showSideToolsId = message.id" @mouseleave="showSideToolsId = null">
                         <div class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-5 py-3 max-w-[70%] shadow-sm">
                             <div class="msg msg-ai text-slate-700 **:select-text!" v-html="message.htmlContent || message.content"></div>
@@ -774,25 +576,20 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             </div>
         </div>
 
-        <!-- 背景遮罩 -->
         <Transition name="mask" enter-active-class="transition ease-in-out duration-300" enter-from-class="opacity-0"
             enter-to-class="opacity-100" leave-active-class="transition ease-in-out duration-300"
             leave-from-class="opacity-100" leave-to-class="opacity-0">
             <div v-if="showHistory || showConfig" class="fixed inset-0 bg-black/40 z-40" @click="panelClose"></div>
         </Transition>
-        <History :isVisible="showHistory" :historyItems="historyItems" @close="panelClose" @load="loadHistoryToApp"
+        <History :isVisible="showHistory" @close="panelClose" @load="loadHistoryToApp"
             @delete="deleteHistoryItem" @export="exportHistoryItem" @import="importHistoryItem"
             @new-conversation="createNewConversation" @update-title="handleUpdateTitle" />
-        <UserConfig :isVisible="showConfig" v-model:globalSystemPrompt="globalSystemPrompt"
-            v-model:userConfig="userConfig" :defaultSystemPrompt="defaultSystemPrompt" v-model:model="model"
-            v-model:isFirstMessageSent="isFirstMessageSent" v-model:bearerToken="bearerToken" @close="panelClose" />
+        <UserConfig :isVisible="showConfig" />
 
-        <!-- 输入区域 - 固定在底部 -->
         <div v-show="!isGivenOptions"
             class="fixed bottom-0 left-0 right-0 bg-indigo-50 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-            <!-- 左侧按钮容器 -->
             <div class="w-3/4 flex space-x-3 ml-3">
-                <button @click="showHistory = true, loadHistoryItems()"
+                <button @click="showHistory = true, historyStore.loadHistoryItems()"
                     class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                         stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:stroke-indigo-500 transition-colors">
@@ -802,7 +599,6 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </button>
             </div>
 
-            <!-- 中间输入框和发送按钮 -->
             <div class="absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
                     class="w-lg px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 bg-slate-50 placeholder-slate-400" />
@@ -820,7 +616,6 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </div>
             </div>
 
-            <!-- 右侧按钮容器 -->
             <div class="w-3/4 flex justify-end mr-3">
                 <button @click="showConfig = true"
                     class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group cursor-pointer">
@@ -835,7 +630,6 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
             </div>
         </div>
 
-        <!-- 选项选择组件 - 固定在底部 -->
         <OptionSelection 
             v-if="isGivenOptions"
             :raw="options.raw"

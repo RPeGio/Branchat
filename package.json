@@ -19,6 +19,7 @@
     "@vueuse/core": "^14.2.1",
     "hast": "^1.0.0",
     "katex": "^0.16.44",
+    "pinia": "^3.0.4",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-stringify": "^10.0.1",

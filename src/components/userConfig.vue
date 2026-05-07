@@ -1,40 +1,21 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue';
-import { Store } from '@tauri-apps/plugin-store';
+import { storeToRefs } from 'pinia';
+import { useConfigStore } from '../stores/config';
+import { useHistoryStore } from '../stores/history';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { models } from '../data/types';
 
-import type { ConfigItem } from '../data/types';
+const configStore = useConfigStore();
+const historyStore = useHistoryStore();
+const { model, globalSystemPrompt, userConfig, isFirstMessageSent } = storeToRefs(configStore);
 
-interface Props {
+const props = defineProps<{
     isVisible: boolean,
-    defaultSystemPrompt: string,
-}
-
-const props = defineProps<Props>();
-
-const emit = defineEmits<{
-    close: [];
 }>();
 
 const showGlobalTooltip = ref(false);
 const showCurrentTooltip = ref(false);
-
-const defaultSystemPrompt = props.defaultSystemPrompt;
-const globalSystemPrompt = defineModel<string>('globalSystemPrompt');
-const model = defineModel<models>('model');
-const config = defineModel<ConfigItem>('userConfig', {
-    required: true,
-    default: () => ({
-        systemPrompt: '',
-        temperature: 1,
-        maxTokens: 4000,
-        topP: 0.9,
-        frequencyPenalty: 0.5
-    })
-});
-const isFirstMessageSent = defineModel<boolean>('isFirstMessageSent');
-const bearerToken = defineModel<string>('bearerToken', { default: '' });
 const tokenDisplayForm = ref<string>('password');
 const isModelOpen = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
@@ -62,10 +43,9 @@ onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside);
 });
 
-watch(bearerToken, async (newToken, oldToken) => {
+watch(() => configStore.bearerToken, async (newToken, oldToken) => {
     if (newToken != oldToken) {
-        const store = await Store.load('store.json');
-        await store.set('bearerToken', newToken);
+        await configStore.saveBearerToken();
     }
 });
 
@@ -77,14 +57,15 @@ const openDsPlatform = async () => {
     await openUrl('https://platform.deepseek.com/api_keys');
 }
 
-// 关闭配置面板
-const closeConfig = () => {
-    emit('close');
+const closeConfig = async () => {
+    await historyStore.saveCurrentConfig({
+        temperature: userConfig.value.temperature,
+        max_tokens: userConfig.value.maxTokens,
+        top_p: userConfig.value.topP,
+        frequency_penalty: userConfig.value.frequencyPenalty,
+    });
+    historyStore.panelClose();
 };
-
-defineExpose({
-    config
-});
 </script>
 
 <template>
@@ -113,7 +94,7 @@ defineExpose({
                         <div>
                             <label class="text-sm font-medium text-slate-600 block mb-1.5">Deepseek Bearer Token&nbsp;（<span @click="openDsPlatform" class="underline text-gray-400 hover:text-gray-500 transition-colors duration-150 cursor-pointer" title="前往Deepseek开放平台">这玩意上哪整？</span>）</label>
                             <div class="flex space-x-2">
-                                <input :type="tokenDisplayForm" v-model="bearerToken"
+                                <input :type="tokenDisplayForm" v-model="configStore.bearerToken"
                                     class="flex-1 px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 text-xs bg-slate-50 text-slate-700 placeholder-slate-400"
                                     placeholder="输入您的 API Token" />
                                 <button @click="toggleTokenVisibility"
@@ -196,7 +177,7 @@ defineExpose({
                         </div>
                         <textarea v-model="globalSystemPrompt"
                             class="w-full h-32 px-4 py-3 border border-slate-200 rounded-xl focus:outline-none bg-slate-50 focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none text-sm text-slate-700 placeholder-slate-400 transition-all duration-200"
-                            :placeholder="defaultSystemPrompt"></textarea>
+                            :placeholder="configStore.defaultSystemPrompt"></textarea>
                     </div>
 
                     <!-- 当前对话系统提示词 -->
@@ -220,7 +201,7 @@ defineExpose({
                                 </span>
                             </div>
                         </div>
-                        <textarea v-model="config.systemPrompt"
+                        <textarea v-model="userConfig.systemPrompt"
                             :disabled="isFirstMessageSent"
                             :class="[
                                 'w-full h-32 px-4 py-3 border rounded-xl focus:outline-none resize-none text-sm transition-all duration-200',
@@ -228,7 +209,7 @@ defineExpose({
                                     ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed' 
                                     : 'border-slate-200 bg-slate-50 focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-slate-700 placeholder-slate-400'
                             ]"
-                            :placeholder="globalSystemPrompt ? globalSystemPrompt: defaultSystemPrompt"
+                            :placeholder="globalSystemPrompt || configStore.defaultSystemPrompt"
                             :title="isFirstMessageSent ? '当前对话已开始，无法修改系统提示词' : ''"></textarea>
                     </div>
                 </div>
@@ -244,9 +225,9 @@ defineExpose({
                         <div>
                             <div class="flex justify-between mb-1.5">
                                 <span class="text-sm font-medium text-slate-600">temperature</span>
-                                <span class="text-sm font-mono text-indigo-600">{{ config.temperature.toFixed(2) }}</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ userConfig.temperature.toFixed(2) }}</span>
                             </div>
-                            <input type="range" min="0" max="2" step="0.01" v-model.number="config.temperature"
+                            <input type="range" min="0" max="2" step="0.01" v-model.number="userConfig.temperature"
                                 class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
                             <p class="text-xs text-slate-400 mt-1">控制AI回复的随机性，值越高越随机</p>
                         </div>
@@ -254,9 +235,9 @@ defineExpose({
                         <div>
                             <div class="flex justify-between mb-1.5">
                                 <span class="text-sm font-medium text-slate-600">max_tokens</span>
-                                <span class="text-sm font-mono text-indigo-600">{{ config.maxTokens }}</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ userConfig.maxTokens }}</span>
                             </div>
-                            <input type="range" min="500" max="8000" step="100" v-model.number="config.maxTokens"
+                            <input type="range" min="500" max="8000" step="100" v-model.number="userConfig.maxTokens"
                                 class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
                             <p class="text-xs text-slate-400 mt-1">控制AI回复的最大长度</p>
                         </div>
@@ -264,9 +245,9 @@ defineExpose({
                         <div>
                             <div class="flex justify-between mb-1.5">
                                 <span class="text-sm font-medium text-slate-600">top_p</span>
-                                <span class="text-sm font-mono text-indigo-600">{{ config.topP.toFixed(2) }}</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ userConfig.topP.toFixed(2) }}</span>
                             </div>
-                            <input type="range" min="-1" max="1" step="0.01" v-model.number="config.topP"
+                            <input type="range" min="-1" max="1" step="0.01" v-model.number="userConfig.topP"
                                 class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
                             <p class="text-xs text-slate-400 mt-1">temperature的替代方案（不建议同时修改top_p与temperature）</p>
                         </div>
@@ -274,9 +255,9 @@ defineExpose({
                         <div>
                             <div class="flex justify-between mb-1.5">
                                 <span class="text-sm font-medium text-slate-600">frequency_penalty</span>
-                                <span class="text-sm font-mono text-indigo-600">{{ config.frequencyPenalty.toFixed(2) }}</span>
+                                <span class="text-sm font-mono text-indigo-600">{{ userConfig.frequencyPenalty.toFixed(2) }}</span>
                             </div>
-                            <input type="range" min="-2" max="2" step="0.1" v-model.number="config.frequencyPenalty"
+                            <input type="range" min="-2" max="2" step="0.1" v-model.number="userConfig.frequencyPenalty"
                                 class="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600" />
                             <p class="text-xs text-slate-400 mt-1">如果该值为正，将降低模型重复相同内容的可能性</p>
                         </div>
