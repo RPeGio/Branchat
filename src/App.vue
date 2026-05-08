@@ -547,7 +547,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 </script>
 
 <template>
-    <div class="h-[calc(100vh-32px-102px)] bg-slate-100 flex flex-col">
+    <div class="app-shell bg-slate-100 flex flex-col">
         <div ref="scrollContainer" @scroll="handleScroll" class="flex-1 overflow-y-auto p-6" style="scroll-padding-bottom: 1rem;">
             <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center select-none">
                 <img src="/icons/icon.png" draggable="false" alt="Branchat" class="w-36 h-36 mb-5 opacity-90" />
@@ -587,8 +587,8 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
         <UserConfig :isVisible="showConfig" />
 
         <div v-show="!isGivenOptions"
-            class="fixed bottom-0 left-0 right-0 bg-indigo-50 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-            <div class="w-3/4 flex space-x-3 ml-3">
+            class="composer-bar fixed bottom-0 left-0 right-0 bg-indigo-50 backdrop-blur-sm border-t border-slate-200 flex items-center justify-between p-4 pb-8.5 pt-8 w-full shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+            <div class="composer-left w-3/4 flex space-x-3 ml-3">
                 <button @click="showHistory = true, historyStore.loadHistoryItems()"
                     class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -599,9 +599,9 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </button>
             </div>
 
-            <div class="absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
+            <div class="composer-center absolute left-1/2 transform -translate-x-1/2 flex space-x-3">
                 <input type="text" placeholder="输入您的问题/指令..." @keydown="textareaEnter"
-                    class="w-lg px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 bg-slate-50 placeholder-slate-400" />
+                    class="composer-input w-lg px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200 bg-slate-50 placeholder-slate-400" />
 
                 <div class="flex space-x-3">
                     <button @click="sendMsg" :disabled="isSending"
@@ -616,7 +616,7 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
                 </div>
             </div>
 
-            <div class="w-3/4 flex justify-end mr-3">
+            <div class="composer-right w-3/4 flex justify-end mr-3">
                 <button @click="showConfig = true"
                     class="w-9 h-9 rounded-xl bg-white shadow-sm hover:shadow-md border border-slate-200 flex items-center justify-center self-center transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50 group cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -788,5 +788,46 @@ watch([markdownRawLines, () => markdownRawLines.value.length], async () => {
 .msg-ai img {
     max-width: 100%;
     border-radius: 8px;
+}
+
+.app-shell {
+    height: calc(100dvh - 32px - 102px - env(safe-area-inset-top, 0px));
+}
+
+.composer-bar {
+    padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(2.125rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 768px) {
+    .app-shell {
+        height: calc(100dvh - 72px - env(safe-area-inset-top, 0px));
+    }
+
+    .composer-bar {
+        gap: 0.75rem;
+        padding-top: 0.875rem;
+        padding-bottom: calc(0.875rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .composer-left,
+    .composer-right {
+        width: auto;
+        margin: 0;
+        flex: 0 0 auto;
+    }
+
+    .composer-center {
+        position: static;
+        transform: none;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .composer-input {
+        width: 100%;
+        min-width: 0;
+    }
 }
 </style>
